@@ -243,9 +243,9 @@ The runner distinguishes two game states:
 Neither state may enter rest, forward, original hunt, attack, or back actions.
 After a recovery action succeeds, refresh the full party and require every
 member to pass normal readiness checks before resuming. The current observed
-`perished` boolean is insufficient to distinguish these states. Keep all
-recovery actions disabled until their manual UI requests and response fields
-are recorded.
+role fields distinguish the states: `hp: 0, perished: false` is `死亡`, while
+`hp: 0, perished: true` is `死透了`. Keep all recovery actions disabled until
+their manual UI requests and response fields are recorded.
 
 ## `GET /reports/defend/status`
 
