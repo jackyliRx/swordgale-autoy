@@ -10,7 +10,7 @@
 
 | 操作 | 方法與端點 | 狀態 | 備註 |
 | --- | --- | --- | --- |
-| 取得角色卡 | `GET /api/heroes` | 已確認 | 一個帳號回傳多張角色卡；每張有 `id`。 |
+| 取得角色卡／出戰勾選 | `GET /api/heroes` | 已確認 | 一個帳號回傳多張角色卡；以 `selected` 判斷出戰；每帳號最多 4 名。 |
 | 開啟角色卡 | `GET /api/heroes/{heroId}` | 已確認 | 取得單一角色詳細資料。 |
 | 角色狀態效果 | `GET /api/heroes/{heroId}/statuses` | 已確認 | 角色專屬狀態清單。 |
 | 取得裝備 | `GET /api/equipments` | 已確認 | 以 `equipped === heroId` 關聯裝備。 |
@@ -29,8 +29,9 @@
 | 區域玩家 | `GET /api/zoneUsers` | 已確認 | 在前行後觀測到的區域資料讀取。 |
 | 全部重生 | `POST /api/heroes/reviveAll` | 已確認 | 無 request body；正常死亡角色開始重生，回傳 `actionCompleteTime`；死透角色不變。 |
 | 個別轉生 | `POST /api/heroes/{heroId}/reincarnate` | 端點已確認 | 依 Console 請求紀錄確認；提供的原始檔未包含該筆，因此 body 與 response 未確認。 |
-| 回程／返回起點 | `POST /api/move/0` | 已確認 | 無 request body；回應位置為大草原第 1 層；是否等同城鎮及多角色效果待確認。 |
-| 完成移動 | `POST /api/move/complete` | 已確認 | 無 request body；完成後到初始之鎮（huntZone/stage 0/0）；接著遊戲讀取 `GET /api/zoneUsers`。 |
+| 回程／返回起點 | `POST /api/move/0` | 已確認 | 無 request body；開始後的狩獵位置資料曾回報大草原 1/1，完成後目的地以 `/huntInfo` 為準。 |
+| 前往大草原 | `POST /api/move/1` | 推定，待錄製 | 由 `/zones` 的大草原 ID 1 推定；自動化會驗證完成後位置為 1/1，否則停止。 |
+| 完成移動 | `POST /api/move/complete` | 已確認 | 無 request body；不同情境完成後到初始之鎮 0/0 或大草原 1/1，必須再讀 `GET /api/huntInfo`。 |
 
 ## 尚未錄製
 

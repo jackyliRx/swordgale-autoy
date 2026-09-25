@@ -17,9 +17,8 @@
   account-specific progress.
 - Autoy stores multiple account tokens separately in browser `localStorage`,
   along with settings scoped to each account. Switching accounts stops the
-  active runner and clears its role view and scheduled recovery polling before
-  loading the selected account. Only one account runs at a time until safe
-  cross-account concurrency and rate limits are established.
+  displayed role view without changing other accounts' runners. Each account
+  has its own runner, timers, cooldowns, request aborters, and role snapshots.
 
 ## `GET /heroes`
 
@@ -44,8 +43,15 @@ single account may own and manage more than one hero.
 | weapon fields | numeric string | Weapon coefficients, such as `sword` and `rapier` |
 
 Two observed role cards both reported `selected: true`. Therefore `selected`
-must not be used to identify the active role until a role-card click captures
-the related request and response.
+is the observed roster selection field. Autoy must include only records with
+`selected: true` in its active hunt party and exclude `selected: false` roles
+from party readiness checks. User-confirmed limit: no more than four roles may
+be dispatched. If the selection field is absent/non-boolean, no role is
+selected, or more than four are selected, stop before any rest or hunt write.
+
+Hunt/completion responses may return reduced role objects without the
+`selected` field; merge those fields into the latest `/heroes` snapshot while
+preserving each role's selection value.
 
 ## `GET /heroes/{heroId}`
 
@@ -300,9 +306,17 @@ timestamps, and a `heroes` array. The captured result placed the returned hero
 at 「大草原」 stage 1 and gave it `actionState: 1` with a future
 `actionCompleteTime`. This supports describing the action as a return to the
 starting point; the capture does not establish that it moves to a named town
-or that it restores every member of a multi-hero party. Require explicit user
-confirmation, then refresh both `/heroes` and `/huntInfo`. Keep automation
-stopped until the user reviews the new party state.
+or that it restores every member of a multi-hero party. The auto-hunt death
+recovery flow refreshes `/heroes` and `/huntInfo`, completes only when every
+selected hero is ready, and validates the resulting location. It stops at
+grassland so the user can revive or reincarnate the affected heroes.
+
+## `POST /move/1`
+
+Inferred from `/zones` identifying 大草原 as zone ID 1; this exact request has
+not yet been captured from the UI. The implementation uses it only after
+confirming town `0/0`, then validates the completed position is grassland `1/1`.
+If the request fails or the position differs, the runner stops without hunting.
 
 ## `POST /move/complete`
 
@@ -313,9 +327,10 @@ depends on the move context: one response was `huntZone: 0`, `huntStage: 0`,
 `huntStage: 1`, `zoneName: 大草原`, `canForward: true`. Treat the endpoint
 response (and a fresh `/huntInfo`) as authoritative; do not assume it always
 returns to town. The frontend also requested `GET /zoneUsers` afterward. Only
-show the completion action when a fresh role response reports `actionState: 1`
-and `canComplete: true`. After the POST, refresh `/heroes` and `/huntInfo`;
-keep hunting stopped for user review.
+complete movement when fresh responses show all selected heroes at
+`actionState: 1` and `canComplete: true`. After the POST, refresh `/heroes` and
+`/huntInfo`; the death recovery flow may continue to zone ID 1 only after
+confirming town `0/0`.
 
 ## `GET /reports/defend/status`
 
