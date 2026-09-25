@@ -22,6 +22,10 @@
 | 任務 | `GET /api/quests` | 已確認 | 讀取任務與刷新冷卻。 |
 | 成就 | `GET /api/achievements` | 已確認 | 讀取成就與帳號統計。 |
 | 防守通知 | `GET /api/reports/defend/status` | 已確認 | 被動通知查詢。 |
+| 帳號資料 | `GET /api/profile` | 已確認 | 帳號摘要、金錢與英雄欄位上限。 |
+| 區域清單 | `GET /api/zones` | 已確認 | 可進入的區域名稱與說明。 |
+| 狩獵狀態 | `GET /api/huntInfo` | 已確認 | 權威的隊伍、樓層、冷卻與 `canForward`／`canBack` 狀態。 |
+| CAPTCHA 狀態 | `GET /api/captcha` | 已確認 | 只讀取待驗證狀態；不處理 CAPTCHA。 |
 | 區域玩家 | `GET /api/zoneUsers` | 已確認 | 在前行後觀測到的區域資料讀取。 |
 
 ## 尚未錄製

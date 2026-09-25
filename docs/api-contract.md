@@ -259,6 +259,10 @@ notification query.
 | --- | --- | --- |
 | `GET /quests` | `active`, `cooldown` | Current quests and quest-roll availability |
 | `GET /achievements` | `achievements`, `stats` | Achievement list and account statistics |
+| `GET /profile` | account summary | Account ID, currency, expansions, and hero-slot limit |
+| `GET /zones` | `zones` | Available hunt-zone metadata |
+| `GET /huntInfo` | `heroes`, `huntStage`, cooldowns, navigation | Authoritative current hunt-party state; use this to initialize `canForward` and cooldown values after a page reload |
+| `GET /captcha` | `pendingCaptchaId`, `sitekey` | Read-only CAPTCHA status; the app must stop and ask the user to complete any CAPTCHA themselves |
 
 ## Required next captures
 
