@@ -8,16 +8,20 @@ let running = false;
 let cooldownAt = 0;
 let restUntil = 0;
 let canForward = null;
+let nextWakeAt = 0;
+let watchdog = null;
+let requestAborter = null;
 const $ = (id) => document.getElementById(id);
 const safe = (text) => String(text).replace(/[<>&]/g, (c) => ({"<":"&lt;",">":"&gt;","&":"&amp;"})[c]);
 const active = () => accounts.find((a) => a.id === activeId);
 function save() { localStorage.setItem(storeKey, JSON.stringify(accounts)); }
 function log(message) { $("events").textContent = `[${new Date().toLocaleTimeString()}] ${message}\n` + $("events").textContent.slice(0, 7000); }
-function config() { return { target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restMinutes: Number($("rest-minutes").value) }; }
-function validConfig(c) { return Number.isInteger(c.target) && c.target > 0 && c.hp >= 1 && c.hp <= 100 && c.sp >= 1 && c.sp <= 100 && c.restMinutes > 0; }
+function config() { return { target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value) }; }
+function validConfig(c) { return Number.isInteger(c.target) && c.target > 0 && c.hp >= 1 && c.hp <= 100 && c.sp >= 1 && c.sp <= 100 && c.restMinutes > 0 && c.alertMinutes >= 1; }
 async function request(path, options = {}) {
   const account = active(); if (!account) throw new Error("請先選擇帳號");
-  const response = await fetch(`${API}${path}`, { ...options, headers: { token: account.token, ...(options.headers || {}) } });
+  requestAborter = new AbortController();
+  const response = await fetch(`${API}${path}`, { ...options, signal: requestAborter.signal, headers: { token: account.token, ...(options.headers || {}) } });
   if (!response.ok) throw new Error(`API ${response.status}: ${await response.text()}`);
   const rotatedToken = response.headers.get("token");
   if (rotatedToken && rotatedToken !== account.token) { account.token = rotatedToken.replace(/^Bearer\s+/i, ""); save(); renderAccounts(); log("已更新 API token"); }
@@ -40,8 +44,9 @@ function setState(message) { const el = $("run-state"); el.textContent = message
 function pct(current, max) { return max > 0 ? (current / max) * 100 : 0; }
 function needsRest(c) { return heroes.some((h) => h.perished || pct(h.hp,h.fullHp) < c.hp || pct(h.sp,h.fullSp) < c.sp); }
 function stage() { return heroes[0]?.huntStage; }
-function schedule(ms) { clearTimeout(timer); timer = setTimeout(turn, Math.max(1000, ms)); }
-function stop(reason = "已停止") { running = false; clearTimeout(timer); timer = null; setState(reason); }
+function schedule(ms) { clearTimeout(timer); nextWakeAt = Date.now() + Math.max(1000, ms); timer = setTimeout(turn, Math.max(1000, ms)); }
+function warn(message) { $("alert").textContent = message; $("alert").hidden = false; document.title = `⚠ ${message} | Autoy`; }
+function stop(reason = "已停止") { running = false; clearTimeout(timer); clearInterval(watchdog); requestAborter?.abort(); timer = watchdog = requestAborter = null; nextWakeAt = 0; setState(reason); if (reason !== "已停止") warn(reason); }
 async function rest(c) {
   if (restUntil && Date.now() < restUntil) return schedule(restUntil - Date.now());
   if (heroes.some((h) => h.canComplete)) {
@@ -62,10 +67,11 @@ async function hunt(c) {
 }
 async function turn() {
   if (!running) return;
-  try { const c = config(); if (!validConfig(c)) throw new Error("請檢查自動狩獵設定"); await refresh(); if (heroes.some((h) => h.perished)) throw new Error("隊伍中有死亡角色"); if (needsRest(c)) await rest(c); else await hunt(c); } catch (error) { log(error.message || String(error)); stop("已因錯誤停止"); }
+  nextWakeAt = Date.now();
+  try { const c = config(); if (!validConfig(c)) throw new Error("請檢查自動狩獵設定"); await refresh(); if (heroes.some((h) => h.perished)) throw new Error("隊伍中有死亡角色"); if (needsRest(c)) await rest(c); else await hunt(c); } catch (error) { if (error.name !== "AbortError") log(error.message || String(error)); stop("已因錯誤停止"); }
 }
 $("account-form").onsubmit = (event) => { event.preventDefault(); const label = $("account-label").value.trim(); const token = $("account-token").value.trim().replace(/^Bearer\s+/i, ""); if (!label || !token) return; const account = { id: crypto.randomUUID(), label, token }; accounts.push(account); activeId = account.id; save(); event.target.reset(); render(); log("已新增帳號；請重新讀取驗證 token"); };
 $("refresh").onclick = () => refresh().catch((e) => log(e.message));
-$("start").onclick = () => { if (!active()) return; running = true; cooldownAt = 0; restUntil = 0; setState(); turn(); };
+$("start").onclick = () => { if (!active()) return; $("alert").hidden = true; document.title = "Autoy"; running = true; cooldownAt = 0; restUntil = 0; setState(); watchdog = setInterval(() => { const c = config(); if (running && nextWakeAt && Date.now() > nextWakeAt + c.alertMinutes * 60000) { log("超過無動作提醒時間"); stop("超過無動作提醒時間，已停止"); } }, 30000); turn(); };
 $("stop").onclick = () => stop();
 render();
