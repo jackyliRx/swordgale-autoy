@@ -231,6 +231,22 @@ counter:
 After each POST, refresh from the returned `huntInfo`, recalculate party
 readiness, and schedule the next decision from the returned cooldown time.
 
+## Death and final-death policy
+
+The runner distinguishes two game states:
+
+| State | Allowed recovery action | Automation behavior |
+| --- | --- | --- |
+| `死亡` | 重生／復活 | Stop the hunt party; only the confirmed rebirth API may run. |
+| `死透了` | 轉生後復活 | Stop the hunt party; only the confirmed reincarnation API may run. |
+
+Neither state may enter rest, forward, original hunt, attack, or back actions.
+After a recovery action succeeds, refresh the full party and require every
+member to pass normal readiness checks before resuming. The current observed
+`perished` boolean is insufficient to distinguish these states. Keep all
+recovery actions disabled until their manual UI requests and response fields
+are recorded.
+
 ## `GET /reports/defend/status`
 
 Returned a status object with `newReportId`, which was `null` in the observed
@@ -263,3 +279,5 @@ notification query.
    `attackAvailableAt` (attack or back) before automating them.
 8. Establish whether two role cards can act concurrently or share an account
    action queue before enabling same-account parallel automation.
+9. Capture a `死亡` role's detail response and its manual 「重生／復活」 action.
+10. Capture a `死透了` role's detail response and its manual 「轉生／復活」 action.
