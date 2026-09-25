@@ -1,0 +1,6 @@
+# Raw recorder exports may contain game/account data. Keep only sanitized docs.
+docs/Example/*.js
+
+# Local editor and operating-system files
+.DS_Store
+Thumbs.db
