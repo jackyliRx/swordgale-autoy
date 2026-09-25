@@ -313,14 +313,23 @@ grassland so the user can revive or reincarnate the affected heroes.
 
 ## `POST /move/1`
 
-Inferred from `/zones` identifying 大草原 as zone ID 1; this exact request has
-not yet been captured from the UI. The implementation uses it only after
-confirming town `0/0`, then validates the completed position is grassland `1/1`.
-If the request fails or the position differs, the runner stops without hunting.
+Observed in the user's 「前往-大草原」 Console entry on 2026-09-25:
+`POST https://myteam.swordgale.online/api/move/1`, HTTP 200, about 64 ms.
+The local recorder capture shows the response still at 初始之鎮 `0/0`, with
+four heroes at `actionState: 1`, a shared `actionCompleteTime` of
+`2026-09-25T19:30:38.095Z`, and `canBack: false`, `canForward: false`. The
+request body was not present in the supplied recorder entry. After waiting and
+completing the move, the separate 「完成移動-大草原」 capture verified arrival
+at 大草原 `1/1`. The implementation waits for all selected heroes to be
+completable, then validates final location and stops on mismatch.
 
 ## `POST /move/complete`
 
-Observed from the game UI action 「完成移動」 with no request body. Both
+Observed from the game UI action 「完成移動」 with no request body. The latest
+「完成移動-大草原」 capture at `2026-09-25T19:30:55.904Z` returned HTTP 200 in
+59 ms, with `huntZone: 1`, `huntStage: 1`, `zoneName: 大草原`,
+`canForward: true`, and two heroes returned to `actionState: 0`; the UI then
+requested `GET /zoneUsers` (HTTP 200, 67 ms, response key `users`). Both
 captures returned the role to idle (`actionState: 0`), but the destination
 depends on the move context: one response was `huntZone: 0`, `huntStage: 0`,
 `zoneName: 初始之鎮`, `canForward: false`; another was `huntZone: 1`,
