@@ -7,8 +7,8 @@
 ## Shared rules
 
 - Base URL observed: `https://myteam.swordgale.online/api`
-- Authentication mechanism is not yet confirmed by the recorder output. Do
-  not assume a token format or store an inferred credential scheme.
+- Authentication is supplied as the raw JWT in the HTTP `token` request
+  header. It is not a Bearer Authorization header.
 - The requests below returned HTTP 200 from an authenticated browser session.
 - Examples intentionally omit character names, complete timestamps, and
   account-specific progress.

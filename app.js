@@ -17,7 +17,7 @@ function config() { return { target: Number($("target-stage").value), hp: Number
 function validConfig(c) { return Number.isInteger(c.target) && c.target > 0 && c.hp >= 1 && c.hp <= 100 && c.sp >= 1 && c.sp <= 100 && c.restMinutes > 0; }
 async function request(path, options = {}) {
   const account = active(); if (!account) throw new Error("請先選擇帳號");
-  const response = await fetch(`${API}${path}`, { ...options, headers: { Authorization: `Bearer ${account.token}`, ...(options.headers || {}) } });
+  const response = await fetch(`${API}${path}`, { ...options, headers: { token: account.token, ...(options.headers || {}) } });
   if (!response.ok) throw new Error(`API ${response.status}: ${await response.text()}`);
   return response.json();
 }

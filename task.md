@@ -104,7 +104,7 @@ GitHub Pages 是靜態網站，無法代替遊戲 API 處理登入、隱藏祕�
 
 ### P2：API 契約與前端實作
 
-- [ ] 建立 `src/api/client.ts`，集中設定 base URL、逾時、授權標頭與可讀錯誤物件。
+- [x] 已確認 API 使用 HTTP `token` header 傳遞原始 JWT；Autoy 只在瀏覽器本機保存 token，不使用 Bearer Authorization header。
 - [ ] 建立 `src/api/gameApi.ts`，只公開已驗證的讀取與行動函式。
 - [ ] 以人工瀏覽器網路觀測驗證 API 流程；可用爬蟲僅針對公開、無登入限制的頁面或已獲授權帳號。
 - [ ] 建立 `docs/api-contract.md`，寫明每個端點的用途、方法、輸入、輸出、前置狀態、冷卻時間與錯誤碼。
