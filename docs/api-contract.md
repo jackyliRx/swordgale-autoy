@@ -152,9 +152,9 @@ Repeat-rest algorithm:
 5. If any enabled role remains below either target, begin the next rest cycle;
    otherwise allow the hunt runner to continue.
 
-If a role is perished, missing, has an invalid maximum HP/SP, or cannot be
-refreshed, stop the party and show the reason. Do not continue resting or hunt
-with a partial party.
+If a role is dead or perished, pause hunting and run the death recovery flow.
+If the flow fails, a role is missing, has an invalid maximum HP/SP, or cannot be
+refreshed, stop that account runner and show the reason.
 
 ## Startup/resume from an existing rest action
 
@@ -185,8 +185,10 @@ Autoy must therefore model a `HuntParty`, not independent battle loops:
 1. Load the current state for every enabled party member.
 2. For a party rest, use `restAll`, wait for its server completion time, then
    use `restAll/complete` once.
-3. If any member is still busy, perished, missing, or has an unknown action
-   state, set the party to `waiting` and make no hunt-start request.
+3. If any member is still busy, dead/perished, missing, or has an unknown
+   action state, do not make a hunt-start request. Dead roles enter the
+   automatic move/recovery flow; other unknown busy states wait or stop with a
+   clear reason.
 4. Begin the next hunt only after every enabled member is confirmed idle by
    the API contract.
 5. Lock the party during start and completion. A different party under the
@@ -265,15 +267,15 @@ The runner distinguishes two game states:
 
 | State | Allowed recovery action | Automation behavior |
 | --- | --- | --- |
-| `死亡` | `POST /heroes/reviveAll`; later complete the hero action when `canComplete: true` | Stop the hunt party. The endpoint starts eligible normal-death rebirth actions. |
-| `死透了` | `POST /heroes/{heroId}/reincarnate` | Stop the hunt party; require an explicit per-hero confirmation before reincarnation. |
+| `死亡` | `POST /heroes/reviveAll`; then complete each selected hero when `canComplete: true` | Pause hunting, move to grassland, start rebirth, wait for server time, complete per hero, then resume readiness checks. Since `reviveAll` is account-wide, stop if an unchecked hero is also in normal-death state. |
+| `死透了` | `POST /heroes/{heroId}/reincarnate` | Pause hunting, move to grassland, reincarnate selected heroes one at a time, refresh after each POST, then resume only after verification. |
 
-Neither state may enter rest, forward, original hunt, attack, or back actions.
-After a recovery action succeeds, refresh the full party and require every
-member to pass normal readiness checks before resuming. The current observed
-role fields distinguish the states: `hp: 0, perished: false` is `死亡`, while
-`perished: true` is `死透了`. After recovery, refresh the full party and require
-every member to pass normal readiness checks before resuming.
+Neither state may enter rest or hunting actions. The auto-hunt runner keeps
+running the death workflow: return/move, recover the selected dead heroes, then
+refresh the full party and require every selected hero to pass normal HP/SP and
+action-state checks before resuming. The current observed role fields
+distinguish the states: `hp: 0, perished: false` is `死亡`, while
+`perished: true` is `死透了`.
 
 ## `POST /heroes/reviveAll`
 
@@ -287,16 +289,19 @@ reincarnation.
 
 Use each returned `actionCompleteTime` as the next status-refresh time, with a
 small safety margin; do not hard-code ten minutes. Refresh `/heroes` then, and
-only offer explicit per-hero completion when the fresh response reports
-`actionState: 3` and `canComplete: true`. Do not automatically repeat a POST
-after an uncertain response.
+only complete selected heroes when the fresh response reports `actionState: 3`
+and `canComplete: true`. Do not automatically repeat a POST after an uncertain
+response. Because this is an account-level batch endpoint, the runner first
+checks that no unchecked hero is also in normal-death state.
 
 The recorder console confirmed an individual reincarnation POST at
 `/heroes/{heroId}/reincarnate`. The supplied raw log file does not contain this
 request entry, so its request body and response schema remain unverified.
-Autoy exposes this action only for `perished: true`, asks for confirmation,
-sends no body, then refreshes `/heroes`. If the result is uncertain, do not
-retry until the user refreshes and inspects the role state.
+During an active auto-hunt run, Autoy sends this action only for selected
+heroes with `perished: true`, one hero at a time, sends no body, then refreshes
+`/heroes`. If the result is uncertain or the role is still perished, stop; do
+not retry. When the runner is stopped, the manual button still asks for
+confirmation.
 
 ## `POST /move/0`
 
@@ -308,8 +313,9 @@ at 「大草原」 stage 1 and gave it `actionState: 1` with a future
 starting point; the capture does not establish that it moves to a named town
 or that it restores every member of a multi-hero party. The auto-hunt death
 recovery flow refreshes `/heroes` and `/huntInfo`, completes only when every
-selected hero is ready, and validates the resulting location. It stops at
-grassland so the user can revive or reincarnate the affected heroes.
+selected hero is ready, and validates the resulting location. It continues
+into automatic rebirth/reincarnation, then resumes hunting after the selected
+party is alive and passes the HP/SP readiness checks.
 
 ## `POST /move/1`
 

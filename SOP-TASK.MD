@@ -17,7 +17,7 @@
 | 1 | 綁定此 runner 的帳號 ID，讀取角色與狩獵狀態 | 同時 `GET /heroes`、`GET /huntInfo` | 全程使用該 token；其他帳號 runner 可同時運行 |
 | 2 | 篩選出戰名單 | 僅納入 `selected === true`；欄位必須是 boolean，出戰數量 1–4 | 0 名、超過 4 名或狀態不明時停止，不呼叫行動 API |
 | 3 | 驗證回應完整性 | 出戰角色 HP/SP 上限為有效數字，行動狀態可識別 | 無效資料立即停止並顯示原因 |
-| 4 | 檢查出戰角色死亡狀態 | `hp <= 0 && perished === false` 為死亡；`perished === true` 為死透 | 停止狩獵，顯示復原操作 |
+| 4 | 檢查出戰角色死亡狀態 | `hp <= 0 && perished === false` 為死亡；`perished === true` 為死透 | 暫停狩獵，保留 runner 自動移動、重生／轉生並續戰 |
 | 5 | 檢查出戰隊伍是否正在休息 | 任一出戰角色 `actionState === 2` | 進入 C「接續既有休息」；不得直接狩獵或重複呼叫 `restAll` |
 | 6 | 檢查其他忙碌或未知行動 | 非休息時，所有出戰角色必須為 `actionState === 0` | 不符合即停止，要求先完成行動 |
 | 7 | 計算出戰角色 HP/SP 百分比 | `hp / fullHp * 100`、`sp / fullSp * 100` | 全員達標才進入 E 狩獵；任何人未達標進入 D 休息 |
@@ -59,20 +59,33 @@
 
 ## F. 回程／移動完成
 
-1. 自動狩獵偵測出戰角色死亡或死透後，暫停狩獵操作，保留該帳號 runner 執行回城流程。
-2. 呼叫已錄製的 `POST /move/0`，等待出戰隊伍移動完成；每次重試前先讀取 `/heroes` 和 `/huntInfo`，避免重複送出移動。
-3. 全隊都在移動且所有角色 `canComplete: true` 時，才呼叫 `POST /move/complete`。
-4. 確認已抵達初始之鎮 `huntZone: 0, huntStage: 0` 後，呼叫 `POST /move/1` 前往大草原；等待並完成第二段移動。
-5. 確認 `/huntInfo` 回報大草原 `huntZone: 1, huntStage: 1` 後停止 runner。死亡角色仍須依狀態手動重生或轉生；不會帶著死亡角色恢復狩獵。
-6. 若位置、移動狀態或完成時間無法確認，停止該帳號 runner 並顯示原因，不猜測位置、不呼叫狩獵 API。
+| 步驟 | 操作與 API | 必須確認的狀態 |
+| --- | --- | --- |
+| 1 | 偵測到出戰角色死亡或死透；暫停此帳號所有狩獵／休息請求 | 僅依 `selected === true` 判斷；其他帳號 runner 不受影響 |
+| 2 | 呼叫 `POST /move/0` 開始回程 | 讀取 `/heroes`、`/huntInfo`；保留伺服器回傳的 `actionCompleteTime` |
+| 3 | 等待回程到期，重新讀取狀態；全隊出戰角色在移動且 `canComplete: true` 才呼叫 `POST /move/complete` | 不因計時器到期就盲目完成；每次寫入前先確認目前狀態 |
+| 4a | 若完成後 `/huntInfo` 為大草原 `1/1` | 已在大草原，跳過 `POST /move/1`，進入步驟 7 |
+| 4b | 若完成後 `/huntInfo` 為初始之鎮 `0/0`，呼叫 `POST /move/1` | 已觀察 HTTP 200；回應仍在城鎮 `0/0`，4 名英雄為 `actionState: 1`，`canBack/canForward: false`，共同完成時間為 `actionCompleteTime` |
+| 5 | 等待 `/move/1` 的完成時間，再重新讀取 `/heroes`、`/huntInfo` | 只有全隊出戰角色都 `actionState: 1` 且 `canComplete: true` 才呼叫 `POST /move/complete` |
+| 6 | 完成移動後再次讀取 `/heroes`、`/huntInfo`；遊戲 UI 的錄製接著有 `GET /zoneUsers` | 已觀察一筆完成回應為大草原 `1/1`、`canForward: true`、2 名英雄 `actionState: 0`；各次 recorder 的英雄數可能不同，以本次最新 API 狀態為準 |
+| 7 | 確認大草原 `1/1` 後進入自動復原 | 一般死亡自動全部重生並逐位完成；死透角色依 `heroId` 自動逐角轉生 |
+| 8 | 確認所有勾選出戰角色都已存活 | 回到 HP/SP 門檻檢查；達標後恢復前行／狩獵，不需手動重新啟動 |
 
-## G. 死亡／復原操作
+若位置、移動狀態或完成時間無法確認，停止該帳號 runner 並顯示原因；不猜測位置、不呼叫狩獵 API。完整去識別化欄位見 `docs/Example/前往-大草原.md`、`docs/Example/完成移動.md`。
 
-- 偵測到出戰角色死亡或死透：自動狩獵 runner 不送休息或狩獵請求，改執行回程、完成移動、必要時從城鎮前往大草原的流程。
-- 移動前後都重新讀取 `/heroes` 與 `/huntInfo`；只在全隊出戰角色都處於移動中且 `canComplete: true` 時呼叫 `POST /move/complete`。
-- 回程完成若在城鎮 `0/0`，以已觀察成功的 `POST /move/1` 前往大草原。已錄製 4 名英雄進入移動狀態並回傳完成時間；重新確認全隊可完成後送出完成移動，目的地不是大草原 `1/1` 就停止並提醒，不發狩獵請求。詳見 `docs/Example/前往-大草原.md`。
-- 抵達大草原後停止 runner。一般死亡（`hp <= 0`, `perished: false`）仍須使用者操作 `POST /heroes/reviveAll`；死透（`perished: true`）仍須使用者個別操作 `POST /heroes/{heroId}/reincarnate`。復原完成並確認角色存活後，使用者重新啟動 runner。
-- 任何寫入請求結果不明：不可盲目重送；先重新讀取狀態，僅依可確認的移動狀態續行，否則停止並交由使用者確認。
+## G. 自動死亡復原與續戰
+
+- 自動狩獵 runner 發現出戰角色死亡或死透時，暫停休息／狩獵請求，但保持 runner 執行並開始 F 節移動流程。
+- 若 runner 啟動時，一般死亡角色已在 `actionState: 3` 重生中，先依完成時間等待並完成該重生，再從目前位置繼續回程／前往大草原；不可因頁面重載或啟動時狀態既存而要求人工重新啟動。
+- 若角色正在移動，先依最新 `/heroes`、`/huntInfo` 與 `canComplete` 接續既有移動；不可重複送出相同移動 POST。
+- 一般死亡（`hp <= 0`, `perished: false`）：呼叫 `POST /heroes/reviveAll` 開始重生。此為帳號批次 API；如果任何未勾選角色也一般死亡，必須停止並提示，避免復原未出戰角色。不得用批次端點盲目重試。
+- 依各角色 `actionCompleteTime` 等待，重新讀取 `/heroes`；只有出戰一般死亡角色全為 `actionState: 3` 且 `canComplete: true` 才能逐位呼叫 `POST /heroes/{heroId}/completeAction`。每次完成後重讀最新狀態。
+- 死透（`perished: true`）：只對該出戰角色呼叫 `POST /heroes/{heroId}/reincarnate`，每次一位；送出後立刻讀取 `/heroes` 確認狀態。結果仍顯示死透時停止，不自動重送。
+- 混合死亡狀態時先逐角處理所有死透角色，再處理一般死亡；每個 POST 後重讀狀態，依最新資料繼續。
+- 新偵測到的死亡隊伍按 F 節先移動到大草原再復原；只有啟動時已存在的重生行動會先完成，完成後接續移動。已在大草原 `1/1` 時略過多餘移動。
+- 出戰角色全數存活後清除死亡復原階段，重新走完整 HP/SP、忙碌狀態與狩獵冷卻檢查，達標後自動恢復戰鬥。
+- 任何 API 失敗、狀態不一致或寫入結果無法確認：停止該帳號 runner 並提示；使用者確認狀態後再啟動，不盲目重送。
+- runner 停止時，畫面上的回程、全部重生與單角轉生按鈕仍可供手動補救；runner 運行且處理死亡時，改顯示自動復原進度並隱藏重複操作按鈕。
 
 ## H. 多帳號／多 token 操作
 
@@ -93,8 +106,14 @@
 - [ ] 目標樓層低於／等於／高於目前樓層時，分別驗證前行／原地狩獵／停止。
 - [ ] 分別勾選 0、1、4、5 名角色；只有 1–4 名時可進入狩獵，5 名時不得送出任何行動 POST。
 - [ ] 未勾選的低 HP、死亡或忙碌角色不參加狩獵隊伍檢查。
-- [ ] 角色死亡與死透時，驗證不呼叫休息或狩獵端點，依序回程、完成移動、必要時移往大草原 1/1，最後停止 runner。
-- [ ] 全隊未到 `canComplete: true` 前不送 `POST /move/complete`；城鎮到大草原的已觀察端點若失敗或位置不符，停止且不狩獵。
+- [ ] 角色死亡與死透時，驗證暫停狩獵並自動移動、重生／轉生；存活後恢復 HP/SP 檢查與狩獵。
+- [ ] runner 啟動時若一般死亡角色已在 `actionState: 3`，驗證會先完成重生，再接續回程／前往大草原與狩獵，不要求再次手動啟動。
+- [ ] runner 啟動時若隊伍已在移動，驗證依伺服器狀態接續等待／完成，不重複送出移動 POST。
+- [ ] 一般死亡依伺服器完成時間自動等待；未全員 `canComplete: true` 前不送完成行動；全部完成後恢復狩獵。
+- [ ] 死透角色只送對應 `heroId` 的轉生請求；成功後確認角色狀態；寫入結果不明不得自動重送。
+- [ ] 未出戰角色有一般死亡時，不呼叫帳號批次 `reviveAll`，顯示停止原因。
+- [ ] 自動復原遇到 API 失敗、狀態不一致或寫入結果無法確認時，只停止該帳號 runner 並顯示原因；確認狀態後才手動重啟。
+- [ ] 全隊未到 `canComplete: true` 前不送 `POST /move/complete`；移動端點失敗或位置不符，停止且不狩獵。
 - [ ] 啟動兩個 token 的 runner 後，兩邊各自運行；切換畫面時狀態、事件與角色資料不串用。
 - [ ] 停止一個 token 時，另一個 token 繼續；「停止全部帳號」才會全部停止。
 - [ ] 停止按鈕生效後，不再送出下一個遊戲行動請求。
@@ -110,6 +129,8 @@
 | 原地狩獵 | `POST /hunt` |
 | 前行並狩獵 | `POST /hunt?type=forward` |
 | 開始回程 | `POST /move/0` |
+| 前往大草原 | `POST /move/1` |
 | 完成移動 | `POST /move/complete` |
+| 讀取區域玩家 | `GET /zoneUsers` |
 | 全部重生 | `POST /heroes/reviveAll` |
 | 個別轉生 | `POST /heroes/{heroId}/reincarnate` |

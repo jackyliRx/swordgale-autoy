@@ -7,7 +7,7 @@ const $ = (id) => document.getElementById(id);
 const safe = (text) => String(text).replace(/[<>&]/g, (c) => ({"<":"&lt;",">":"&gt;","&":"&amp;"})[c]);
 const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
-  if (!runtimes.has(id)) runtimes.set(id, { heroes: [], timer: null, running: false, cooldownAt: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null });
+  if (!runtimes.has(id)) runtimes.set(id, { heroes: [], timer: null, running: false, cooldownAt: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, resumeDeathMoveAfterRecovery: false });
   return runtimes.get(id);
 }
 for (const account of accounts) runtimeFor(account.id);
@@ -149,14 +149,14 @@ function renderHeroes(accountId = activeId) {
   const canStartRevive = deaths.some((hero) => Number(hero.actionState) !== 3);
   const canCompleteMove = party.some((hero) => Number(hero.actionState) === 1 && hero.canComplete === true);
   const controls = [];
-  if (deaths.length || finalDeaths.length) controls.push('<button id="return-start" class="primary">回程／返回起點</button>');
-  if (canCompleteMove) controls.push('<button id="complete-move">完成移動</button>');
-  if (canStartRevive) controls.push('<button id="revive-all" class="primary">全部重生</button>');
-  for (const hero of readyToComplete) controls.push(`<button data-complete-revive="${encodeURIComponent(hero.id)}" ${state.recoveryRequests.has(String(hero.id)) ? "disabled" : ""}>完成 ${safe(hero.name)} 重生</button>`);
-  for (const hero of finalDeaths) controls.push(`<button data-reincarnate="${encodeURIComponent(hero.id)}" class="danger" ${state.recoveryRequests.has(String(hero.id)) ? "disabled" : ""}>單獨轉生 ${safe(hero.name)}</button>`);
-  if (finalDeaths.length) controls.push('<a class="recovery-link" href="https://myteam.swordgale.online/heroes" target="_blank" rel="noopener noreferrer">前往遊戲角色頁</a>');
+  if (!state.running && (deaths.length || finalDeaths.length)) controls.push('<button id="return-start" class="primary">回程／返回起點</button>');
+  if (!state.running && canCompleteMove) controls.push('<button id="complete-move">完成移動</button>');
+  if (!state.running && canStartRevive) controls.push('<button id="revive-all" class="primary">全部重生</button>');
+  if (!state.running) for (const hero of readyToComplete) controls.push(`<button data-complete-revive="${encodeURIComponent(hero.id)}" ${state.recoveryRequests.has(String(hero.id)) ? "disabled" : ""}>完成 ${safe(hero.name)} 重生</button>`);
+  if (!state.running) for (const hero of finalDeaths) controls.push(`<button data-reincarnate="${encodeURIComponent(hero.id)}" class="danger" ${state.recoveryRequests.has(String(hero.id)) ? "disabled" : ""}>單獨轉生 ${safe(hero.name)}</button>`);
+  if (!state.running && finalDeaths.length) controls.push('<a class="recovery-link" href="https://myteam.swordgale.online/heroes" target="_blank" rel="noopener noreferrer">前往遊戲角色頁</a>');
   $("death-actions").innerHTML = deaths.length || finalDeaths.length
-    ? `<div class="recovery-actions"><strong>出戰隊伍復原</strong><p>只對勾選出戰角色執行狩獵與復原操作。一般死亡可全部重生；死透角色可逐角轉生。</p><div class="actions">${controls.join("")}</div></div>`
+    ? `<div class="recovery-actions"><strong>出戰隊伍復原</strong><p>${state.running ? "自動狩獵執行中：會自動回程，並對勾選出戰角色重生或逐角轉生；復原後檢查 HP／SP 並繼續狩獵。" : "只依勾選出戰角色判斷復原對象。一般死亡使用帳號批次重生 API；死透角色逐角轉生。"}</p><div class="actions">${controls.join("")}</div></div>`
     : "";
   const reviveButton = $("revive-all"); if (reviveButton) reviveButton.onclick = () => runManual(accountId, startReviveAll);
   const returnButton = $("return-start"); if (returnButton) returnButton.onclick = () => runManual(accountId, returnToStart);
@@ -172,7 +172,7 @@ function renderHeroes(accountId = activeId) {
 }
 function scheduleObservedAction(hero, accountId) {
   const state = runtimeFor(accountId);
-  if (state.running && state.deathMovePhase) return;
+  if (state.running && (state.deathMovePhase || state.deathRecoveryPhase)) return;
   const waitingForRecovery = deathState(hero) === "death" && Number(hero.actionState) === 3;
   const waitingForMove = Number(hero.actionState) === 1;
   const key = String(hero.id);
@@ -215,9 +215,12 @@ function stopForDeaths(accountId) {
   const dead = party.filter((hero) => deathState(hero));
   if (!dead.length) return false;
   const summary = dead.map((hero) => deathState(hero) === "final-death" ? `${hero.name}：死透了，需個別轉生` : Number(hero.actionState) === 3 ? `${hero.name}：重生行動進行中` : `${hero.name}：死亡，需重生`).join("；");
-  stopRunner(accountId, "出戰隊伍有死亡角色，已停止");
-  warn(`自動狩獵已停止。${summary}。`, accountId);
-  log(`偵測到出戰角色死亡：${summary}`, accountId);
+  if (state.running) {
+    log(`偵測到出戰角色死亡：${summary}；自動暫停狩獵並開始回程／復原`, accountId);
+    schedule(1000, accountId);
+  } else {
+    warn(`自動狩獵未執行。${summary}。`, accountId);
+  }
   renderHeroes(accountId);
   return true;
 }
@@ -227,6 +230,85 @@ function scheduleDeathMove(accountId, party, reason) {
   const wait = Math.max(1000, endAt - Date.now() + 1500);
   log(`${reason}；等待移動完成後重新檢查，約 ${Math.ceil(wait / 1000)} 秒`, accountId);
   schedule(wait, accountId);
+}
+function scheduleDeathRecovery(accountId, heroes, reason) {
+  const dueAt = Math.max(...heroes.map((hero) => Date.parse(hero.actionCompleteTime || 0) || 0), 0);
+  const wait = dueAt > Date.now() ? dueAt - Date.now() + 2000 : 30000;
+  log(`${reason}；依伺服器完成時間等待約 ${Math.ceil(wait / 1000)} 秒後重查`, accountId);
+  schedule(wait, accountId);
+}
+async function continueDeathRecovery(accountId) {
+  const state = runtimeFor(accountId);
+  let party = selectedParty(accountId);
+  const finalDeaths = party.filter((hero) => deathState(hero) === "final-death");
+  for (const hero of finalDeaths) {
+    state.recoveryRequests.add(String(hero.id));
+    if (accountId === activeId) renderHeroes(accountId);
+    try {
+      await request(`/heroes/${encodeURIComponent(hero.id)}/reincarnate`, { method: "POST" }, accountId);
+      await refreshAccount(accountId);
+      party = selectedParty(accountId);
+      const current = party.find((entry) => String(entry.id) === String(hero.id));
+      if (!current || deathState(current) === "final-death") throw new Error(`${hero.name} 轉生請求已送出，但最新角色狀態尚未確認復原；為避免重複轉生，已停止`);
+      log(`${hero.name} 已完成轉生，繼續檢查其他出戰角色`, accountId);
+    } finally {
+      state.recoveryRequests.delete(String(hero.id));
+      if (accountId === activeId) renderHeroes(accountId);
+    }
+  }
+
+  party = selectedParty(accountId);
+  const ordinaryDeaths = party.filter((hero) => deathState(hero) === "death");
+  if (ordinaryDeaths.length) {
+    const reviving = ordinaryDeaths.filter((hero) => Number(hero.actionState) === 3);
+    if (reviving.length && reviving.length !== ordinaryDeaths.length) throw new Error("出戰角色重生狀態不一致；不重複送出全部重生，請重新檢查角色");
+    if (reviving.length) {
+      if (!reviving.every((hero) => hero.canComplete === true)) {
+        scheduleDeathRecovery(accountId, reviving, "一般死亡角色正在重生");
+        return true;
+      }
+      for (const hero of reviving) {
+        await request(`/heroes/${encodeURIComponent(hero.id)}/completeAction`, { method: "POST" }, accountId);
+        await refreshAccount(accountId);
+        const current = selectedParty(accountId).find((entry) => String(entry.id) === String(hero.id));
+        if (!current || deathState(current) === "death") throw new Error(`${hero.name} 完成重生後仍是死亡狀態；已停止以避免重複完成`);
+        log(`${hero.name} 已完成重生`, accountId);
+      }
+    } else {
+      const uncheckedDeaths = state.heroes.filter((hero) => hero.selected === false && deathState(hero) === "death");
+      if (uncheckedDeaths.length) throw new Error(`未出戰角色有一般死亡；全部重生是帳號批次 API，為避免復原未勾選角色，自動流程已停止（${uncheckedDeaths.length} 名）`);
+      if (ordinaryDeaths.some((hero) => Number(hero.actionState) !== 0)) throw new Error("一般死亡角色有無法辨識的行動狀態；停止自動重生");
+      await request("/heroes/reviveAll", { method: "POST" }, accountId);
+      await refreshAccount(accountId);
+      party = selectedParty(accountId);
+      const started = party.filter((hero) => deathState(hero) === "death");
+      if (!started.length) {
+        log("全部重生請求後，出戰角色已不再是死亡狀態", accountId);
+        schedule(1000, accountId);
+        return true;
+      }
+      if (started.some((hero) => Number(hero.actionState) !== 3)) throw new Error("全部重生已送出，但 API 未確認所有一般死亡角色進入重生；停止自動化以免重複送出");
+      if (started.every((hero) => hero.canComplete === true)) schedule(1000, accountId);
+      else scheduleDeathRecovery(accountId, started, "已自動開始全部重生");
+      return true;
+    }
+  }
+
+  party = selectedParty(accountId);
+  const remainingDeaths = party.filter((hero) => deathState(hero));
+  if (remainingDeaths.length) {
+    schedule(1000, accountId);
+    return true;
+  }
+  state.deathRecoveryPhase = false;
+  log("勾選出戰角色已全部復原；重新檢查 HP／SP 後繼續自動狩獵", accountId);
+  if (state.resumeDeathMoveAfterRecovery) {
+    state.resumeDeathMoveAfterRecovery = false;
+    state.deathMovePhase = "to-town";
+    log("偵測到既有重生流程先完成；接著繼續死亡回程流程", accountId);
+  }
+  schedule(1000, accountId);
+  return true;
 }
 async function beginDeathMove(accountId, destination, phaseLabel) {
   const state = runtimeFor(accountId);
@@ -239,15 +321,22 @@ async function beginDeathMove(accountId, destination, phaseLabel) {
 async function continueDeathMove(accountId, party) {
   const state = runtimeFor(accountId);
   if (!state.deathMovePhase) {
+    const inProgressRevivals = party.filter((hero) => deathState(hero) === "death" && Number(hero.actionState) === 3);
+    if (inProgressRevivals.length) {
+      state.deathRecoveryPhase = true;
+      state.resumeDeathMoveAfterRecovery = true;
+      return continueDeathRecovery(accountId);
+    }
     const alreadyMoving = party.every((hero) => Number(hero.actionState) === 1);
     const alreadyAtTown = party.every((hero) => Number(hero.huntZone) === 0 && Number(hero.huntStage) === 0);
-    if (alreadyAtTown) {
+    if (alreadyMoving) state.deathMovePhase = "to-town";
+    else if (alreadyAtTown) {
+      if (party.some((hero) => Number(hero.actionState) !== 0)) throw new Error("出戰角色目前有休息、重生或其他行動；完成後再重新啟動死亡復原流程");
       state.deathMovePhase = "to-town";
       await beginDeathMove(accountId, 1, "前往大草原");
       scheduleDeathMove(accountId, selectedParty(accountId), "已送出前往大草原");
       return true;
     }
-    if (alreadyMoving) state.deathMovePhase = "to-town";
     else {
       if (party.some((hero) => Number(hero.actionState) !== 0)) throw new Error("出戰角色目前有休息、重生或其他行動；請先完成該行動，再重新啟動死亡回城流程");
       state.deathMovePhase = "to-town";
@@ -271,9 +360,9 @@ async function continueDeathMove(accountId, party) {
     if (state.deathMovePhase === "to-town") {
       if (Number(info.huntZone) === 1 && Number(info.huntStage) === 1) {
         state.deathMovePhase = null;
-        log("回程完成後已在大草原第 1 層；角色仍需復活／轉生", accountId);
-        stopRunner(accountId, "已抵達大草原；請先復原死亡角色");
-        return true;
+        state.deathRecoveryPhase = true;
+        log("回程完成後已在大草原第 1 層；開始自動重生／轉生", accountId);
+        return continueDeathRecovery(accountId);
       }
       if (Number(info.huntZone) !== 0 || Number(info.huntStage) !== 0) throw new Error(`返回移動完成後位置不是城鎮（目前 ${info.zoneName || "未知"} ${info.huntZone}/${info.huntStage}）；為避免走錯地圖，已停止自動流程`);
       log("死亡復原流程：已抵達城鎮，開始前往大草原", accountId);
@@ -283,9 +372,9 @@ async function continueDeathMove(accountId, party) {
     }
     if (Number(info.huntZone) !== 1 || Number(info.huntStage) !== 1) throw new Error(`前往大草原後位置不符（目前 ${info.zoneName || "未知"} ${info.huntZone}/${info.huntStage}）；已停止自動流程`);
     state.deathMovePhase = null;
-    log("死亡復原流程：已抵達大草原第 1 層；角色仍需復活／轉生，狩獵已停止", accountId);
-    stopRunner(accountId, "已回城並抵達大草原；請先復原死亡角色");
-    return true;
+    state.deathRecoveryPhase = true;
+    log("已抵達大草原第 1 層；開始自動重生／轉生", accountId);
+    return continueDeathRecovery(accountId);
   }
   if (state.deathMovePhase === "to-town" && party.every((hero) => Number(hero.huntZone) === 0 && Number(hero.huntStage) === 0)) {
     await beginDeathMove(accountId, 1, "前往大草原");
@@ -294,8 +383,8 @@ async function continueDeathMove(accountId, party) {
   }
   if (state.deathMovePhase === "to-grassland" && party.every((hero) => Number(hero.huntZone) === 1 && Number(hero.huntStage) === 1)) {
     state.deathMovePhase = null;
-    stopRunner(accountId, "已抵達大草原；請先復原死亡角色");
-    return true;
+    state.deathRecoveryPhase = true;
+    return continueDeathRecovery(accountId);
   }
   if (party.every((hero) => Number(hero.actionState) === 0)) {
     const destination = state.deathMovePhase === "to-town" ? 0 : 1;
@@ -342,6 +431,7 @@ async function runManual(accountId, action) {
 async function startReviveAll(accountId) {
   const state = runtimeFor(accountId);
   if (!selectedParty(accountId).some((hero) => deathState(hero) === "death" && Number(hero.actionState) !== 3)) return;
+  if (state.heroes.some((hero) => hero.selected === false && deathState(hero) === "death")) { warn("未出戰角色也有一般死亡；全部重生是帳號批次 API，為避免影響未勾選角色，不會送出", accountId); return; }
   try { const result = await request("/heroes/reviveAll", { method: "POST" }, accountId); state.heroes = mergeHeroes(state.heroes, result.heroes); renderHeroes(accountId); log("已對可重生角色開始全部重生；死透角色不會由此端點復原", accountId); stopForDeaths(accountId); }
   catch (error) { warn(`全部重生失敗：${error.message || error}`, accountId); }
 }
@@ -470,6 +560,8 @@ async function turn(accountId) {
     await refreshAccount(accountId);
     if (!state.running) return;
     const party = stopForInvalidParty(accountId);
+    if (state.deathMovePhase) { await continueDeathMove(accountId, party); return; }
+    if (state.deathRecoveryPhase) { await continueDeathRecovery(accountId); return; }
     if (party.some((hero) => deathState(hero))) { await continueDeathMove(accountId, party); return; }
     if (party.some((hero) => Number(hero.actionState) === 2)) { await rest(c, accountId); return; }
     if (party.some((hero) => Number(hero.actionState) !== 0)) throw new Error("勾選出戰隊伍有移動或未識別行動；請先完成並重新讀取");
