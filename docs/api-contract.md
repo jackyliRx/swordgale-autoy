@@ -15,6 +15,11 @@
 - The requests below returned HTTP 200 from an authenticated browser session.
 - Examples intentionally omit character names, complete timestamps, and
   account-specific progress.
+- Autoy stores multiple account tokens separately in browser `localStorage`,
+  along with settings scoped to each account. Switching accounts stops the
+  active runner and clears its role view and scheduled recovery polling before
+  loading the selected account. Only one account runs at a time until safe
+  cross-account concurrency and rate limits are established.
 
 ## `GET /heroes`
 
@@ -145,6 +150,23 @@ If a role is perished, missing, has an invalid maximum HP/SP, or cannot be
 refreshed, stop the party and show the reason. Do not continue resting or hunt
 with a partial party.
 
+## Startup/resume from an existing rest action
+
+Every 「開始自動狩獵」 turn begins with fresh `GET /heroes` and
+`GET /huntInfo` data. If every participating role is already in the observed
+rest state (`actionState: 2`), Autoy resumes that rest cycle instead of calling
+`restAll` again or attempting to hunt. It waits until both the server's
+`actionCompleteTime` and the account's configured minimum interval have passed.
+It then requires `canComplete: true` for every resting role before issuing one
+`POST /heroes/restAll/complete`.
+
+After completing the existing rest, the runner refreshes state and checks each
+role's HP/SP percentages. If every role meets both thresholds and the entire
+party is idle, it can continue to the configured hunt action. If any role is
+below either threshold, it begins another complete party-rest cycle. Mixed
+rest/idle states, non-idle actions, empty role lists, invalid vitals, or
+unknown action states stop the runner; they never fall through to a hunt POST.
+
 ## Multi-role hunt coordination
 
 User-confirmed game rule: when two or more role cards are dispatched together,
@@ -237,15 +259,63 @@ The runner distinguishes two game states:
 
 | State | Allowed recovery action | Automation behavior |
 | --- | --- | --- |
-| `死亡` | 重生／復活 | Stop the hunt party; only the confirmed rebirth API may run. |
-| `死透了` | 轉生後復活 | Stop the hunt party; only the confirmed reincarnation API may run. |
+| `死亡` | `POST /heroes/reviveAll`; later complete the hero action when `canComplete: true` | Stop the hunt party. The endpoint starts eligible normal-death rebirth actions. |
+| `死透了` | `POST /heroes/{heroId}/reincarnate` | Stop the hunt party; require an explicit per-hero confirmation before reincarnation. |
 
 Neither state may enter rest, forward, original hunt, attack, or back actions.
 After a recovery action succeeds, refresh the full party and require every
 member to pass normal readiness checks before resuming. The current observed
 role fields distinguish the states: `hp: 0, perished: false` is `死亡`, while
-`hp: 0, perished: true` is `死透了`. Keep all recovery actions disabled until
-their manual UI requests and response fields are recorded.
+`perished: true` is `死透了`. After recovery, refresh the full party and require
+every member to pass normal readiness checks before resuming.
+
+## `POST /heroes/reviveAll`
+
+Observed from the game UI action 「全部重生」 with no request body. It returns
+the party's `heroes` array. In the capture, a normal-death hero
+(`hp: 0, perished: false`) entered `actionState: 3` with a future
+`actionCompleteTime` approximately ten minutes later and `canComplete: false`;
+a final-death hero (`perished: true`) remained unchanged. Thus this endpoint
+starts rebirth for eligible normal-death roles and does not handle final-death
+reincarnation.
+
+Use each returned `actionCompleteTime` as the next status-refresh time, with a
+small safety margin; do not hard-code ten minutes. Refresh `/heroes` then, and
+only offer explicit per-hero completion when the fresh response reports
+`actionState: 3` and `canComplete: true`. Do not automatically repeat a POST
+after an uncertain response.
+
+The recorder console confirmed an individual reincarnation POST at
+`/heroes/{heroId}/reincarnate`. The supplied raw log file does not contain this
+request entry, so its request body and response schema remain unverified.
+Autoy exposes this action only for `perished: true`, asks for confirmation,
+sends no body, then refreshes `/heroes`. If the result is uncertain, do not
+retry until the user refreshes and inspects the role state.
+
+## `POST /move/0`
+
+Observed from the user's 「回程」 capture, with no request body. The response
+includes `huntZone`, `huntStage`, `zoneName`, `canBack`, `canForward`, cooldown
+timestamps, and a `heroes` array. The captured result placed the returned hero
+at 「大草原」 stage 1 and gave it `actionState: 1` with a future
+`actionCompleteTime`. This supports describing the action as a return to the
+starting point; the capture does not establish that it moves to a named town
+or that it restores every member of a multi-hero party. Require explicit user
+confirmation, then refresh both `/heroes` and `/huntInfo`. Keep automation
+stopped until the user reviews the new party state.
+
+## `POST /move/complete`
+
+Observed from the game UI action 「完成移動」 with no request body. Both
+captures returned the role to idle (`actionState: 0`), but the destination
+depends on the move context: one response was `huntZone: 0`, `huntStage: 0`,
+`zoneName: 初始之鎮`, `canForward: false`; another was `huntZone: 1`,
+`huntStage: 1`, `zoneName: 大草原`, `canForward: true`. Treat the endpoint
+response (and a fresh `/huntInfo`) as authoritative; do not assume it always
+returns to town. The frontend also requested `GET /zoneUsers` afterward. Only
+show the completion action when a fresh role response reports `actionState: 1`
+and `canComplete: true`. After the POST, refresh `/heroes` and `/huntInfo`;
+keep hunting stopped for user review.
 
 ## `GET /reports/defend/status`
 
@@ -271,9 +341,12 @@ notification query.
 2. [Confirmed] `POST /heroes/{heroId}/completeAction` completes an available
    action. It must be guarded by a fresh `canComplete: true` check and never
    automatically retried after an uncertain response.
-3. [Confirmed] 「全部休息」 calls `POST /heroes/restAll` with no observed request
+3. [Confirmed] 「全部重生」 calls `POST /heroes/reviveAll` without a body;
+   it starts rebirth for normal-death heroes and leaves final-death heroes
+   unchanged. The response provides `actionCompleteTime` for each rebirth.
+4. [Confirmed] 「全部休息」 calls `POST /heroes/restAll` with no observed request
    body and starts rest for all participating role cards.
-4. [Confirmed] 「全部完成休息」 calls `POST /heroes/restAll/complete` with no
+5. [Confirmed] 「全部完成休息」 calls `POST /heroes/restAll/complete` with no
    observed request body and completes all resting role cards in one action.
 5. [Confirmed] 「原地狩獵」 calls `POST /hunt` with no observed request body and
    returns a combined multi-role report plus server cooldown timestamps.
