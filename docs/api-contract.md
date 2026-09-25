@@ -9,6 +9,9 @@
 - Base URL observed: `https://myteam.swordgale.online/api`
 - Authentication is supplied as the raw JWT in the HTTP `token` request
   header. It is not a Bearer Authorization header.
+- The server exposes the `token` response header. When a successful response
+  contains a replacement value, update only the matching account's local token
+  before the next request.
 - The requests below returned HTTP 200 from an authenticated browser session.
 - Examples intentionally omit character names, complete timestamps, and
   account-specific progress.

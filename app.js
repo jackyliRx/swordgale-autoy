@@ -19,6 +19,8 @@ async function request(path, options = {}) {
   const account = active(); if (!account) throw new Error("請先選擇帳號");
   const response = await fetch(`${API}${path}`, { ...options, headers: { token: account.token, ...(options.headers || {}) } });
   if (!response.ok) throw new Error(`API ${response.status}: ${await response.text()}`);
+  const rotatedToken = response.headers.get("token");
+  if (rotatedToken && rotatedToken !== account.token) { account.token = rotatedToken.replace(/^Bearer\s+/i, ""); save(); renderAccounts(); log("已更新 API token"); }
   return response.json();
 }
 async function refresh() {

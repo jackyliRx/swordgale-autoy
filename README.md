@@ -2,6 +2,8 @@
 
 靜態 GitHub Pages 前端。使用者可在頁面新增帳號別名與遊戲 API token；token 僅保存在該瀏覽器的 `localStorage`，不會寫入 GitHub。已確認遊戲 API 使用 HTTP `token` header 傳送原始 JWT，不使用 `Authorization: Bearer`。
 
+伺服器若在成功回應的 `token` header 提供更新值，Autoy 會自動更新該帳號的本機 token。
+
 已實作：讀取多角色、全隊重複休息、目標樓層前行、到達後原地狩獵、停止與錯誤保護。
 
 ## 本機開啟
