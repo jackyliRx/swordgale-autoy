@@ -7,7 +7,7 @@ const $ = (id) => document.getElementById(id);
 const safe = (text) => String(text).replace(/[<>&]/g, (c) => ({"<":"&lt;",">":"&gt;","&":"&amp;"})[c]);
 const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
-  if (!runtimes.has(id)) runtimes.set(id, { heroes: [], messages: [], operations: [], timer: null, refreshPromise: null, running: false, cooldownAt: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, resumeDeathMoveAfterRecovery: false });
+  if (!runtimes.has(id)) runtimes.set(id, { heroes: [], messages: [], operations: [], timer: null, refreshPromise: null, running: false, cooldownAt: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
   return runtimes.get(id);
 }
 for (const account of accounts) runtimeFor(account.id);
@@ -15,6 +15,8 @@ function save() { localStorage.setItem(storeKey, JSON.stringify(accounts)); }
 function log(message, accountId = activeId) {
   const label = accounts.find((a) => a.id === accountId)?.label;
   const prefix = label ? `[${label}] ` : "";
+  const account = accounts.find((entry) => entry.id === accountId);
+  if (account?.settings?.flowMessages === false) return;
   const state = runtimeFor(accountId);
   state.messages.unshift({ time: new Date().toLocaleTimeString(), text: `${prefix}${message}` });
   state.messages.splice(160);
@@ -197,7 +199,6 @@ function renderAccounts() {
     activeId = button.dataset.select;
     loadSettings(active());
     render();
-    refreshAccount(activeId).catch((error) => log(`讀取帳號資料失敗：${error.message || error}`, activeId));
   });
   document.querySelectorAll("[data-run]").forEach((button) => button.onclick = () => {
     const id = button.dataset.run;
@@ -211,7 +212,6 @@ function renderAccounts() {
     runtimes.delete(id);
     if (activeId === id) { activeId = accounts[0]?.id || null; if (active()) loadSettings(); }
     save(); render();
-    if (active()) refreshAccount(activeId).catch((error) => log(`讀取帳號資料失敗：${error.message || error}`, activeId));
   });
 }
 function renderHeroes(accountId = activeId) {
@@ -388,11 +388,6 @@ async function continueDeathRecovery(accountId) {
   }
   state.deathRecoveryPhase = false;
   log("勾選出戰角色已全部復原；重新檢查 HP／SP 後繼續自動狩獵", accountId);
-  if (state.resumeDeathMoveAfterRecovery) {
-    state.resumeDeathMoveAfterRecovery = false;
-    state.deathMovePhase = "to-town";
-    log("偵測到既有重生流程先完成；接著繼續死亡回程流程", accountId);
-  }
   schedule(1000, accountId);
   return true;
 }
@@ -404,33 +399,14 @@ async function beginDeathMove(accountId, destination, phaseLabel) {
   await refreshAccount(accountId);
   log(`死亡復原流程：已開始${phaseLabel}移動`, accountId);
 }
+function partyLocation(party) {
+  if (!party.length) return null;
+  const zone = Number(party[0].huntZone);
+  const stage = Number(party[0].huntStage);
+  return party.every((hero) => Number(hero.huntZone) === zone && Number(hero.huntStage) === stage) ? { zone, stage } : null;
+}
 async function continueDeathMove(accountId, party) {
   const state = runtimeFor(accountId);
-  if (!state.deathMovePhase) {
-    const inProgressRevivals = party.filter((hero) => deathState(hero) === "death" && Number(hero.actionState) === 3);
-    if (inProgressRevivals.length) {
-      state.deathRecoveryPhase = true;
-      state.resumeDeathMoveAfterRecovery = true;
-      return continueDeathRecovery(accountId);
-    }
-    const alreadyMoving = party.every((hero) => Number(hero.actionState) === 1);
-    const alreadyAtTown = party.every((hero) => Number(hero.huntZone) === 0 && Number(hero.huntStage) === 0);
-    if (alreadyMoving) state.deathMovePhase = "to-town";
-    else if (alreadyAtTown) {
-      if (party.some((hero) => Number(hero.actionState) !== 0)) throw new Error("出戰角色目前有休息、重生或其他行動；完成後再重新啟動死亡復原流程");
-      state.deathMovePhase = "to-town";
-      await beginDeathMove(accountId, 1, "前往大草原");
-      scheduleDeathMove(accountId, selectedParty(accountId), "已送出前往大草原");
-      return true;
-    }
-    else {
-      if (party.some((hero) => Number(hero.actionState) !== 0)) throw new Error("出戰角色目前有休息、重生或其他行動；請先完成該行動，再重新啟動死亡回城流程");
-      state.deathMovePhase = "to-town";
-      await beginDeathMove(accountId, 0, "返回城鎮");
-      scheduleDeathMove(accountId, selectedParty(accountId), "已送出返回城鎮");
-      return true;
-    }
-  }
   const moving = party.filter((hero) => Number(hero.actionState) === 1);
   if (moving.length) {
     if (moving.length !== party.length) throw new Error("出戰角色移動狀態不一致；已停止自動移動，請檢查遊戲狀態");
@@ -441,45 +417,71 @@ async function continueDeathMove(accountId, party) {
     const result = await request("/move/complete", { method: "POST" }, accountId);
     state.heroes = mergeHeroes(state.heroes, result.heroes);
     await refreshAccount(accountId);
-    const info = await request("/huntInfo", {}, accountId);
-    state.canForward = info.canForward ?? result.canForward ?? state.canForward;
-    if (state.deathMovePhase === "to-town") {
-      if (Number(info.huntZone) === 1 && Number(info.huntStage) === 1) {
-        state.deathMovePhase = null;
-        state.deathRecoveryPhase = true;
-        log("回程完成後已在大草原第 1 層；開始自動重生／轉生", accountId);
-        return continueDeathRecovery(accountId);
-      }
-      if (Number(info.huntZone) !== 0 || Number(info.huntStage) !== 0) throw new Error(`返回移動完成後位置不是城鎮（目前 ${info.zoneName || "未知"} ${info.huntZone}/${info.huntStage}）；為避免走錯地圖，已停止自動流程`);
-      log("死亡復原流程：已抵達城鎮，開始前往大草原", accountId);
-      await beginDeathMove(accountId, 1, "前往大草原");
-      scheduleDeathMove(accountId, selectedParty(accountId), "已送出前往大草原");
-      return true;
+    return continueDeathMove(accountId, selectedParty(accountId));
+  }
+  const reviving = party.filter((hero) => deathState(hero) === "death" && Number(hero.actionState) === 3);
+  if (reviving.length) {
+    state.deathMovePhase = null;
+    state.deathRecoveryPhase = true;
+    log("偵測到既有一般重生行動；依目前角色狀態接續重生", accountId);
+    return continueDeathRecovery(accountId);
+  }
+  if (party.some((hero) => Number(hero.actionState) !== 0)) throw new Error("出戰角色有未識別行動；已停止死亡復原流程，請重新讀取確認");
+  const location = partyLocation(party);
+  if (!location) throw new Error("出戰角色位置不一致；已停止死亡復原流程，請重新讀取確認");
+  if (location.zone === 0 && location.stage === 0) {
+    state.deathMovePhase = null;
+    state.deathRecoveryPhase = true;
+    log("死亡復原流程：已在初始之鎮，開始依角色狀態重生／轉生", accountId);
+    return continueDeathRecovery(accountId);
+  }
+  state.deathMovePhase = "to-town";
+  await beginDeathMove(accountId, 0, "返回城鎮");
+  scheduleDeathMove(accountId, selectedParty(accountId), "已送出返回城鎮");
+  return true;
+}
+function scheduleHuntMove(accountId, party, reason) {
+  const dueAt = Math.max(...party.map((hero) => Date.parse(hero.actionCompleteTime || 0) || 0), 0);
+  const delay = dueAt > Date.now() ? dueAt - Date.now() + 2000 : 30000;
+  log(`${reason}；依伺服器完成時間等待約 ${Math.ceil(delay / 1000)} 秒後完成移動`, accountId);
+  schedule(delay, accountId);
+}
+async function beginHuntMoveToGrassland(accountId) {
+  const state = runtimeFor(accountId);
+  const result = await request("/move/1", { method: "POST" }, accountId);
+  state.heroes = mergeHeroes(state.heroes, result.heroes);
+  state.huntMovePhase = "to-grassland";
+  await refreshAccount(accountId);
+  const party = selectedParty(accountId);
+  if (!party.length || !party.every((hero) => Number(hero.actionState) === 1)) throw new Error("前往大草原請求後，出戰隊伍未進入移動狀態；已停止避免重複送出");
+  log("自動狩獵：已從初始之鎮開始前往大草原", accountId);
+  scheduleHuntMove(accountId, party, "前往大草原中");
+}
+async function continueHuntMove(accountId, party) {
+  const state = runtimeFor(accountId);
+  const moving = party.filter((hero) => Number(hero.actionState) === 1);
+  if (moving.length) {
+    if (moving.length !== party.length) throw new Error("出戰角色移動狀態不一致；已停止自動導航，請檢查遊戲狀態");
+    if (!moving.every((hero) => hero.canComplete === true)) {
+      scheduleHuntMove(accountId, moving, "前往大草原中");
+      return;
     }
-    if (Number(info.huntZone) !== 1 || Number(info.huntStage) !== 1) throw new Error(`前往大草原後位置不符（目前 ${info.zoneName || "未知"} ${info.huntZone}/${info.huntStage}）；已停止自動流程`);
-    state.deathMovePhase = null;
-    state.deathRecoveryPhase = true;
-    log("已抵達大草原第 1 層；開始自動重生／轉生", accountId);
-    return continueDeathRecovery(accountId);
+    const result = await request("/move/complete", { method: "POST" }, accountId);
+    state.heroes = mergeHeroes(state.heroes, result.heroes);
+    await refreshAccount(accountId);
   }
-  if (state.deathMovePhase === "to-town" && party.every((hero) => Number(hero.huntZone) === 0 && Number(hero.huntStage) === 0)) {
-    await beginDeathMove(accountId, 1, "前往大草原");
-    scheduleDeathMove(accountId, selectedParty(accountId), "已送出前往大草原");
-    return true;
+  const currentParty = selectedParty(accountId);
+  if (currentParty.every((hero) => Number(hero.huntZone) === 1 && Number(hero.huntStage) === 1 && Number(hero.actionState) === 0)) {
+    state.huntMovePhase = null;
+    log("自動狩獵：已抵達大草原第 1 層，開始檢查狩獵條件", accountId);
+    schedule(1000, accountId);
+    return;
   }
-  if (state.deathMovePhase === "to-grassland" && party.every((hero) => Number(hero.huntZone) === 1 && Number(hero.huntStage) === 1)) {
-    state.deathMovePhase = null;
-    state.deathRecoveryPhase = true;
-    return continueDeathRecovery(accountId);
+  if (currentParty.every((hero) => Number(hero.huntZone) === 0 && Number(hero.huntStage) === 0 && Number(hero.actionState) === 0)) {
+    await beginHuntMoveToGrassland(accountId);
+    return;
   }
-  if (party.every((hero) => Number(hero.actionState) === 0)) {
-    const destination = state.deathMovePhase === "to-town" ? 0 : 1;
-    const label = destination === 0 ? "返回城鎮" : "前往大草原";
-    await beginDeathMove(accountId, destination, label);
-    scheduleDeathMove(accountId, selectedParty(accountId), `已重新送出${label}`);
-    return true;
-  }
-  throw new Error("死亡回城流程中沒有可辨識的移動狀態；已停止自動流程，請重新讀取並手動確認");
+  throw new Error("前往大草原完成後位置或行動狀態不符；已停止自動流程，請重新讀取確認");
 }
 function partyVitalsValid(party) {
   return party.every((hero) => typeof hero.hp === "number" && typeof hero.sp === "number" && typeof hero.fullHp === "number" && hero.fullHp > 0 && typeof hero.fullSp === "number" && hero.fullSp > 0 && typeof hero.perished === "boolean" && Number.isInteger(hero.actionState));
@@ -638,6 +640,13 @@ async function hunt(c, accountId) {
   if (!partyVitalsValid(party)) throw new Error("出戰角色 HP／SP 或行動狀態無效，已停止");
   if (party.some((hero) => Number(hero.actionState) !== 0 || hero.perished || hero.hp <= 0)) throw new Error("出戰隊伍尚未全員空閒且存活；禁止開始狩獵");
   if (needsRest(c, accountId)) throw new Error("出戰角色未達 HP／SP 目標；禁止開始狩獵");
+  const atTown = party.every((hero) => Number(hero.huntZone) === 0 && Number(hero.huntStage) === 0);
+  const atGrassland = party.every((hero) => Number(hero.huntZone) === 1 && Number(hero.huntStage) >= 1);
+  if (atTown) {
+    await beginHuntMoveToGrassland(accountId);
+    return;
+  }
+  if (!atGrassland) throw new Error("出戰隊伍不在已驗證的狩獵地圖或位置不一致；請重新讀取確認");
   const current = Number(party[0]?.huntStage);
   if (!Number.isInteger(current)) throw new Error("找不到出戰隊伍目前樓層");
   if (current > c.target) throw new Error("目前樓層已超過目標，未啟用自動後退");
@@ -672,10 +681,18 @@ async function turn(accountId) {
     await refreshAccount(accountId);
     if (!state.running) return;
     const party = stopForInvalidParty(accountId);
-    debug(accountId, "runner.turn", { config: c, party: partyDebug(party), deathMovePhase: state.deathMovePhase, deathRecoveryPhase: state.deathRecoveryPhase });
+    debug(accountId, "runner.turn", { config: c, party: partyDebug(party), deathMovePhase: state.deathMovePhase, deathRecoveryPhase: state.deathRecoveryPhase, huntMovePhase: state.huntMovePhase });
     if (state.deathMovePhase) { operation(accountId, "runner.branch", { branch: "death-move" }); debug(accountId, "runner.branch", { branch: "death-move" }); await continueDeathMove(accountId, party); return; }
     if (state.deathRecoveryPhase) { operation(accountId, "runner.branch", { branch: "death-recovery" }); debug(accountId, "runner.branch", { branch: "death-recovery" }); await continueDeathRecovery(accountId); return; }
     if (party.some((hero) => deathState(hero))) { operation(accountId, "runner.branch", { branch: "death-detected" }); debug(accountId, "runner.branch", { branch: "death-detected" }); await continueDeathMove(accountId, party); return; }
+    if (state.huntMovePhase) { operation(accountId, "runner.branch", { branch: "hunt-move" }); debug(accountId, "runner.branch", { branch: "hunt-move" }); await continueHuntMove(accountId, party); return; }
+    if (party.every((hero) => Number(hero.actionState) === 1 && Number(hero.huntZone) === 0 && Number(hero.huntStage) === 0)) {
+      state.huntMovePhase = "to-grassland";
+      operation(accountId, "runner.branch", { branch: "hunt-move-resume" });
+      log("偵測到既有前往大草原移動；接續完成導航", accountId);
+      await continueHuntMove(accountId, party);
+      return;
+    }
     if (party.some((hero) => Number(hero.actionState) === 2)) { operation(accountId, "runner.branch", { branch: "rest-existing" }); debug(accountId, "runner.branch", { branch: "rest-existing" }); await rest(c, accountId); return; }
     if (party.some((hero) => Number(hero.actionState) !== 0)) throw new Error("勾選出戰隊伍有移動或未識別行動；請先完成並重新讀取");
     if (needsRest(c, accountId)) { operation(accountId, "runner.branch", { branch: "rest-needed" }); debug(accountId, "runner.branch", { branch: "rest-needed" }); await rest(c, accountId); }
@@ -739,6 +756,7 @@ function initAccountEvents() {
   $("copy-operations").onclick = () => copyText(JSON.stringify(runtimeFor(activeId).operations, null, 2), "操作紀錄 JSON 已複製");
   for (const id of ["target-stage", "hp-target", "sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console"]) $(id).addEventListener("change", () => {
     persistSettings();
+    if (id === "flow-messages" && $("flow-messages").checked) log("已啟用流程訊息", activeId);
     if (id === "operation-log" && $("operation-log").checked) operation(activeId, "operation-log.enabled", { message: "使用者啟用操作紀錄" });
     renderFlowMessages(activeId); renderOperations(activeId);
   });
@@ -747,9 +765,8 @@ function init() {
   initAccountEvents();
   if (active()) loadSettings();
   render();
-  for (const account of accounts) refreshAccount(account.id).catch((error) => log(`讀取帳號資料失敗：${error.message || error}`, account.id));
   setInterval(() => {
-    if (document.hidden || !activeId) return;
+    if (document.hidden || !activeId || !runtimeFor(activeId).running) return;
     refreshAccount(activeId, { quiet: true }).catch((error) => log(`自動重新讀取失敗：${error.message || error}`, activeId));
   }, 15000);
 }

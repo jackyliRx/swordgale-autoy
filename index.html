@@ -29,12 +29,12 @@
           <label>體力 SP 目標 %<input id="sp-target" type="number" min="1" max="100" value="70" /></label>
           <label>休息最小分鐘<input id="rest-minutes" type="number" min="0.1" step="0.1" value="1" /></label>
           <label>無動作提醒分鐘<input id="alert-minutes" type="number" min="1" step="1" value="3" /></label>
-          <label class="checkbox-setting"><input id="flow-messages" type="checkbox" checked /> 顯示流程訊息</label>
+          <label class="checkbox-setting"><input id="flow-messages" type="checkbox" checked /> 啟用流程訊息</label>
           <label class="checkbox-setting"><input id="operation-log" type="checkbox" /> 啟用操作紀錄</label>
           <label class="checkbox-setting"><input id="debug-console" type="checkbox" /> Console 除錯紀錄</label>
         </div>
         <div class="actions"><button id="refresh">重新讀取</button><button id="start" class="primary">啟動此帳號</button><button id="stop" class="danger">停止此帳號</button><button id="stop-all" class="danger">停止全部帳號</button></div>
-        <p class="hint">停止後可在遊戲調整出戰角色；Autoy 會自動重新讀取並在下次啟動前以最新名單驗證。流程訊息適合日常查看；「啟用操作紀錄」會記錄本次頁面操作，格式接近爬蟲紀錄；Console 保留 API 細節。三者都不會輸出 token。</p>
+        <p class="hint">停止後不會背景重新讀取；可在遊戲調整出戰角色後按「重新讀取」，或直接啟動，Autoy 會先讀取最新名單再判斷。取消「啟用流程訊息」會停止新增一般流程文字；「啟用操作紀錄」會記錄 request／response；Console 保留額外除錯細節。三者都不會輸出 token。</p>
         <p id="alert" class="alert" hidden></p>
         <div id="death-actions"></div>
           </section>
