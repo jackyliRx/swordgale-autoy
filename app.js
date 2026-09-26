@@ -259,7 +259,7 @@ async function refreshAccount(accountId = activeId, { quiet = false } = {}) {
 function renderAccounts() {
   $("accounts").innerHTML = accounts.map((account) => {
     const state = runtimeFor(account.id);
-    return `<div class="account ${account.id === activeId ? "active" : ""}"><button data-select="${account.id}">${safe(account.label)}</button><small>${state.running ? "自動狩獵中" : "已停止"} · token 已設定</small><button data-run="${account.id}" class="${state.running ? "danger" : "primary"}">${state.running ? "停止此帳號" : "啟動此帳號"}</button><button data-copy-token="${account.id}">複製 TOKEN</button><button data-delete="${account.id}">移除</button></div>`;
+    return `<div class="account ${account.id === activeId ? "active" : ""}"><div class="account-summary"><button data-select="${account.id}">${safe(account.label)}</button><small>${state.running ? "自動狩獵中" : "已停止"} · token 已設定</small></div><div class="account-actions"><button data-run="${account.id}" class="${state.running ? "danger" : "primary"}">${state.running ? "停止" : "啟動"}</button><button data-copy-token="${account.id}">Token</button><button data-delete="${account.id}">移除</button></div></div>`;
   }).join("");
   document.querySelectorAll("[data-select]").forEach((button) => button.onclick = () => {
     activeId = button.dataset.select;
@@ -316,7 +316,7 @@ function renderHeroes(accountId = activeId) {
     const actionComplete = hero.actionCompleteTime ? `，完成時間 ${formatTime(hero.actionCompleteTime)}` : "";
     const status = recovery === "final-death" ? "死透了：需要轉生後復活" : reviving ? `重生中，完成時間 ${formatTime(hero.actionCompleteTime)}` : recovery === "death" ? "死亡：需要重生／復活" : moving ? `移動中，完成時間 ${formatTime(hero.actionCompleteTime)}` : resting ? `休息中，完成時間 ${formatTime(hero.actionCompleteTime)}${hero.canComplete === true ? "（可完成）" : ""}` : actionCode === 0 ? "空閒" : `其他遊戲行動中（狀態 ${actionCode}${actionTarget}${actionComplete}）`;
     const rank = rankById.get(String(hero.id));
-    const duty = rank ? `出戰 ${rank}` : hero.selected === false ? "未勾選出戰" : "出戰狀態未知";
+    const duty = rank ? `出戰 ${rank}` : hero.selected === false ? "未出戰" : "出戰狀態未知";
     const recoveryLink = recovery ? `<a class="recovery-link" href="https://myteam.swordgale.online/heroes/${encodeURIComponent(hero.id)}" target="_blank" rel="noopener noreferrer">前往遊戲手動復原</a>` : "";
     return `<article class="hero ${recovery ? "hero-dead" : ""} ${rank ? "hero-selected" : ""}"><div class="hero-heading"><strong>${safe(hero.name)}</strong><span class="hero-duty ${rank ? "selected" : ""}">${duty}</span></div><p>${safe(hero.zoneName || "-")} · ${hero.huntStage ?? "-"} 層</p><div class="hero-meters">${meter("HP", hero.hp, hero.fullHp, "hp")}${meter("體力", hero.sp, hero.fullSp, "sp")}${meter("經驗", hero.exp, hero.fullExp, "exp")}</div><p>${status}</p>${recoveryLink}</article>`;
   }).join("");

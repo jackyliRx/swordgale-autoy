@@ -8,7 +8,7 @@
   </head>
   <body>
     <main class="app-shell">
-      <header><h1>Autoy</h1><p>多角色自動狩獵</p></header>
+      <header><h1>Autoy</h1><p>多角色自動狩獵</p><span class="badge app-version">UI v0.6.0</span></header>
       <div class="workspace">
         <aside class="card sidebar" id="hero-panel">
           <div class="heading"><h2>角色</h2><span id="party-summary" class="badge">尚未讀取</span></div>
@@ -17,16 +17,13 @@
         </aside>
         <div class="content">
           <section class="card">
-            <h2>帳號</h2>
+            <div class="heading account-heading"><h2>帳號</h2><button id="stop-all" class="danger">停止全部帳號</button></div>
             <form id="account-form"><input id="account-label" placeholder="帳號別名" maxlength="40" required /><input id="account-token" type="password" placeholder="遊戲 API token" autocomplete="off" required /><button>新增帳號</button></form>
             <div id="accounts"></div>
           </section>
           <section class="card" id="automation-card" hidden>
         <div class="heading"><h2 id="active-label"></h2><span id="run-state" class="badge">已停止</span></div>
-        <div class="automation-controls">
-          <div class="control-group"><span class="control-label">目前帳號</span><div class="actions"><button id="refresh">重新讀取</button><button id="start" class="primary">啟動</button><button id="stop" class="danger">停止</button></div></div>
-          <div class="control-group control-group-global"><span class="control-label">全部帳號</span><div class="actions"><button id="stop-all" class="danger">停止全部</button></div></div>
-        </div>
+        <div class="automation-controls"><div class="control-group"><span class="control-label">目前帳號</span><div class="actions"><button id="refresh">重新讀取</button><button id="start" class="primary">啟動</button><button id="stop" class="danger">停止</button></div></div></div>
         <section class="automation-settings" aria-label="自動狩獵設定">
           <h3>自動狩獵設定</h3>
           <div class="settings">
