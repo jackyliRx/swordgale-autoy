@@ -259,7 +259,7 @@ async function refreshAccount(accountId = activeId, { quiet = false } = {}) {
 function renderAccounts() {
   $("accounts").innerHTML = accounts.map((account) => {
     const state = runtimeFor(account.id);
-    return `<div class="account ${account.id === activeId ? "active" : ""}"><div class="account-summary"><button data-select="${account.id}">${safe(account.label)}</button><small>${state.running ? "自動狩獵中" : "已停止"} · token 已設定</small></div><div class="account-actions"><button data-run="${account.id}" class="${state.running ? "danger" : "primary"}">${state.running ? "停止" : "啟動"}</button><button data-copy-token="${account.id}">Token</button><button data-delete="${account.id}">移除</button></div></div>`;
+    return `<div class="account ${account.id === activeId ? "active" : ""}"><div class="account-summary"><button data-select="${account.id}">${safe(account.label)}</button></div><div class="account-actions"><div class="actions"><button data-run="${account.id}" class="${state.running ? "danger" : "primary"}">${state.running ? "停止" : "啟動"}</button><button data-copy-token="${account.id}">Token</button><button data-delete="${account.id}">移除</button></div><small>${state.running ? "自動狩獵中" : "已停止"} · token 已設定</small></div></div>`;
   }).join("");
   document.querySelectorAll("[data-select]").forEach((button) => button.onclick = () => {
     activeId = button.dataset.select;
