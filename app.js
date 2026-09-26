@@ -7,7 +7,7 @@ const $ = (id) => document.getElementById(id);
 const safe = (text) => String(text).replace(/[<>&]/g, (c) => ({"<":"&lt;",">":"&gt;","&":"&amp;"})[c]);
 const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
-  if (!runtimes.has(id)) runtimes.set(id, { heroes: [], timer: null, running: false, cooldownAt: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, resumeDeathMoveAfterRecovery: false });
+  if (!runtimes.has(id)) runtimes.set(id, { heroes: [], messages: [], operations: [], timer: null, refreshPromise: null, running: false, cooldownAt: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, resumeDeathMoveAfterRecovery: false });
   return runtimes.get(id);
 }
 for (const account of accounts) runtimeFor(account.id);
@@ -15,15 +15,56 @@ function save() { localStorage.setItem(storeKey, JSON.stringify(accounts)); }
 function log(message, accountId = activeId) {
   const label = accounts.find((a) => a.id === accountId)?.label;
   const prefix = label ? `[${label}] ` : "";
-  $("events").textContent = `[${new Date().toLocaleTimeString()}] ${prefix}${message}\n` + $("events").textContent.slice(0, 7000);
+  const state = runtimeFor(accountId);
+  state.messages.unshift({ time: new Date().toLocaleTimeString(), text: `${prefix}${message}` });
+  state.messages.splice(160);
+  operation(accountId, "flow.message", { message });
+  if (accountId === activeId) renderFlowMessages(accountId);
+}
+function operation(accountId, event, details = {}) {
+  const account = accounts.find((entry) => entry.id === accountId);
+  if (account?.settings?.operationLog !== true) return;
+  const state = runtimeFor(accountId);
+  const safeDetails = { ...details };
+  if (typeof safeDetails.message === "string") safeDetails.message = safeDetails.message.replace(/API (\d+):[\s\S]*/, "API $1").slice(0, 500);
+  state.operations.unshift({ at: new Date().toISOString(), event, ...safeDetails });
+  state.operations.splice(500);
+  if (accountId === activeId) renderOperations(accountId);
+}
+function renderOperations(accountId = activeId) {
+  const account = accounts.find((entry) => entry.id === accountId);
+  const state = runtimeFor(accountId);
+  $("operation-card").hidden = !account || account.settings?.operationLog !== true;
+  if (!account || account.settings?.operationLog !== true) return;
+  $("operations").textContent = state.operations.length ? JSON.stringify(state.operations, null, 2) : "尚未記錄操作。啟用後的下一個讀取或自動流程會出現在此處。";
+}
+function renderFlowMessages(accountId = activeId) {
+  const account = accounts.find((entry) => entry.id === accountId);
+  const state = runtimeFor(accountId);
+  $("flow-card").hidden = !account || account.settings?.flowMessages === false;
+  if (!account || account.settings?.flowMessages === false) return;
+  $("events").textContent = state.messages.map((entry) => `[${entry.time}] ${entry.text}`).join("\n") || "尚無流程訊息。";
+}
+function debug(accountId, event, details = {}) {
+  const account = accounts.find((entry) => entry.id === accountId);
+  if (account?.settings?.debug !== true) return;
+  console.debug("[Autoy debug]", {
+    at: new Date().toISOString(),
+    account: account.label,
+    event,
+    ...details
+  });
+}
+function partyDebug(party) {
+  return party.map((hero) => ({ id: hero.id, name: hero.name, selected: hero.selected, hp: hero.hp, fullHp: hero.fullHp, sp: hero.sp, fullSp: hero.fullSp, actionState: hero.actionState, perished: hero.perished, zone: hero.huntZone, stage: hero.huntStage, canComplete: hero.canComplete }));
 }
 function config(accountId = activeId) {
   const account = accounts.find((a) => a.id === accountId);
-  if (account?.settings) return { target: Number(account.settings.target), hp: Number(account.settings.hp), sp: Number(account.settings.sp), restMinutes: Number(account.settings.restMinutes), alertMinutes: Number(account.settings.alertMinutes) };
-  return { target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value) };
+  if (account?.settings) return { target: Number(account.settings.target), hp: Number(account.settings.hp), sp: Number(account.settings.sp), restMinutes: Number(account.settings.restMinutes), alertMinutes: Number(account.settings.alertMinutes), flowMessages: account.settings.flowMessages !== false, operationLog: account.settings.operationLog === true, debug: account.settings.debug === true };
+  return { target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked };
 }
 function validConfig(c) { return Number.isInteger(c.target) && c.target > 0 && c.hp >= 1 && c.hp <= 100 && c.sp >= 1 && c.sp <= 100 && c.restMinutes > 0 && c.alertMinutes >= 1; }
-function defaultSettings() { return { target: 1, hp: 80, sp: 70, restMinutes: 1, alertMinutes: 3 }; }
+function defaultSettings() { return { target: 1, hp: 80, sp: 70, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false }; }
 function loadSettings(account = active()) {
   if (!account) return;
   account.settings = { ...defaultSettings(), ...(account.settings || {}) };
@@ -32,6 +73,9 @@ function loadSettings(account = active()) {
   $("sp-target").value = account.settings.sp;
   $("rest-minutes").value = account.settings.restMinutes;
   $("alert-minutes").value = account.settings.alertMinutes;
+  $("flow-messages").checked = account.settings.flowMessages !== false;
+  $("operation-log").checked = account.settings.operationLog === true;
+  $("debug-console").checked = account.settings.debug === true;
 }
 function persistSettings() {
   const account = active();
@@ -39,7 +83,7 @@ function persistSettings() {
   account.settings = configFromForm();
   save();
 }
-function configFromForm() { return { target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value) }; }
+function configFromForm() { return { target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked }; }
 function clearRecoveryTimers(accountId) {
   const state = runtimeFor(accountId);
   for (const entry of state.recoveryTimers.values()) clearTimeout(entry.timer);
@@ -71,12 +115,27 @@ async function request(path, options = {}, accountId = activeId) {
   if (isWrite) state.writeBusy = true;
   const controller = new AbortController();
   state.aborters.add(controller);
+  const startedAt = Date.now();
   try {
+    operation(accountId, "api.request", { method, path });
+    debug(accountId, "api.request", { method, path });
     const response = await fetch(`${API}${path}`, { ...options, signal: controller.signal, headers: { token: account.token, ...(options.headers || {}) } });
-    if (!response.ok) throw new Error(`API ${response.status}: ${await response.text()}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      operation(accountId, "api.failure", { method, path, status: response.status, durationMs: Date.now() - startedAt, message: `HTTP ${response.status}` });
+      debug(accountId, "api.error", { method, path, status: response.status, response: errorText });
+      throw new Error(`API ${response.status}: ${errorText}`);
+    }
     const rotatedToken = response.headers.get("token");
     if (rotatedToken && rotatedToken !== account.token) { account.token = rotatedToken.replace(/^Bearer\s+/i, ""); save(); renderAccounts(); log("已更新 API token", accountId); }
-    return response.json();
+    const data = await response.json();
+    operation(accountId, "api.success", { method, path, status: response.status, durationMs: Date.now() - startedAt });
+    debug(accountId, "api.success", { method, path, status: response.status });
+    return data;
+  } catch (error) {
+    if (error.name !== "AbortError") operation(accountId, "api.exception", { method, path, durationMs: Date.now() - startedAt, message: String(error.message || error).slice(0, 500) });
+    if (error.name !== "AbortError") debug(accountId, "api.exception", { method, path, message: error.message || String(error) });
+    throw error;
   } finally {
     state.aborters.delete(controller);
     if (isWrite) state.writeBusy = false;
@@ -89,18 +148,24 @@ async function refresh(accountId = activeId) {
   if (accountId === activeId) { renderHeroes(accountId); log(`已讀取 ${state.heroes.length} 張角色卡`, accountId); }
   return state.heroes;
 }
-async function refreshAccount(accountId = activeId) {
+async function refreshAccount(accountId = activeId, { quiet = false } = {}) {
   const state = runtimeFor(accountId);
-  const heroData = await request("/heroes", {}, accountId);
-  const huntInfo = await request("/huntInfo", {}, accountId);
-  state.heroes = heroData.heroes || [];
-  state.canForward = huntInfo.canForward ?? null;
-  state.cooldownAt = Date.parse(huntInfo.huntAvailableAt || 0) || 0;
-  if (accountId === activeId) {
-    renderHeroes(accountId);
-    const count = state.heroes.filter((hero) => hero.selected === true).length;
-    log(`已載入帳號狀態：${state.heroes.length} 張角色卡，勾選出戰 ${count} 名；${huntInfo.zoneName || "位置未知"} ${huntInfo.huntStage ?? "?"} 層`, accountId);
-  }
+  if (state.refreshPromise) return state.refreshPromise;
+  state.refreshPromise = (async () => {
+    const heroData = await request("/heroes", {}, accountId);
+    const huntInfo = await request("/huntInfo", {}, accountId);
+    state.heroes = heroData.heroes || [];
+    state.canForward = huntInfo.canForward ?? null;
+    state.cooldownAt = Date.parse(huntInfo.huntAvailableAt || 0) || 0;
+    debug(accountId, "state.refreshed", { party: partyDebug(state.heroes.filter((hero) => hero.selected === true)), huntZone: huntInfo.huntZone, huntStage: huntInfo.huntStage, canForward: state.canForward, cooldownAt: huntInfo.huntAvailableAt || null });
+    if (accountId === activeId) {
+      renderHeroes(accountId);
+      const count = state.heroes.filter((hero) => hero.selected === true).length;
+      if (!quiet) log(`已載入帳號狀態：${state.heroes.length} 張角色卡，勾選出戰 ${count} 名；${huntInfo.zoneName || "位置未知"} ${huntInfo.huntStage ?? "?"} 層`, accountId);
+    }
+  })();
+  try { return await state.refreshPromise; }
+  finally { state.refreshPromise = null; }
 }
 function renderAccounts() {
   $("accounts").innerHTML = accounts.map((account) => {
@@ -197,8 +262,9 @@ function render() {
   renderAccounts();
   const account = active();
   $("automation-card").hidden = !account;
-  if (account) { $("active-label").textContent = account.label; loadSettings(account); renderHeroes(account.id); setState(null, account.id); }
-  else { $("heroes").innerHTML = ""; $("death-actions").innerHTML = ""; $("party-summary").textContent = ""; }
+  $("hero-panel").hidden = !account;
+  if (account) { $("active-label").textContent = account.label; loadSettings(account); renderHeroes(account.id); renderFlowMessages(account.id); renderOperations(account.id); setState(null, account.id); }
+  else { $("heroes").innerHTML = ""; $("death-actions").innerHTML = ""; $("party-summary").textContent = ""; $("flow-card").hidden = true; $("operation-card").hidden = true; }
 }
 function setState(message, accountId = activeId) {
   if (accountId !== activeId) return;
@@ -404,6 +470,8 @@ function schedule(ms, accountId) {
   const state = runtimeFor(accountId);
   clearTimeout(state.timer);
   state.nextWakeAt = Date.now() + Math.max(1000, ms);
+  operation(accountId, "runner.scheduled", { delayMs: Math.max(1000, ms), nextWakeAt: new Date(state.nextWakeAt).toISOString() });
+  debug(accountId, "runner.scheduled", { delayMs: Math.max(1000, ms), nextWakeAt: new Date(state.nextWakeAt).toISOString() });
   state.timer = setTimeout(() => turn(accountId), Math.max(1000, ms));
 }
 function warn(message, accountId = activeId) {
@@ -412,6 +480,8 @@ function warn(message, accountId = activeId) {
 }
 function stopRunner(accountId, reason = "已停止") {
   const state = runtimeFor(accountId);
+  operation(accountId, "runner.stopped", { reason });
+  debug(accountId, "runner.stopped", { reason });
   state.running = false;
   clearTimeout(state.timer); clearInterval(state.watchdog);
   for (const controller of state.aborters) controller.abort();
@@ -503,8 +573,10 @@ async function rest(c, accountId) {
     if (waitMs > 0 || !resting.every((hero) => hero.canComplete === true)) {
       const delay = waitMs > 0 ? waitMs + 2000 : 30000;
       state.restUntil = Date.now() + delay;
+      debug(accountId, "rest.wait", { party: partyDebug(party), dueAt: new Date(dueAt).toISOString(), waitMs: delay, allCanComplete: resting.every((hero) => hero.canComplete === true) });
       log(`偵測到既有全隊休息；等待後重新檢查`, accountId); schedule(delay, accountId); return;
     }
+    debug(accountId, "rest.complete", { party: partyDebug(party) });
     const result = await request("/heroes/restAll/complete", { method: "POST" }, accountId);
     state.heroes = mergeHeroes(state.heroes, result.huntInfo?.heroes);
     state.canForward = result.huntInfo?.canForward ?? state.canForward; state.restUntil = 0;
@@ -512,6 +584,7 @@ async function rest(c, accountId) {
     log("已完成全隊休息；下一輪重新檢查 HP／SP", accountId); schedule(1000, accountId); return;
   }
   if (party.some((hero) => Number(hero.actionState) !== 0)) throw new Error("出戰隊伍有未完成的非休息行動；請先完成行動");
+  debug(accountId, "rest.start", { party: partyDebug(party), minMinutes: c.restMinutes });
   const result = await request("/heroes/restAll", { method: "POST" }, accountId);
   state.heroes = mergeHeroes(state.heroes, result.heroes); state.canForward = result.canForward ?? state.canForward;
   const updatedParty = selectedParty(accountId);
@@ -523,7 +596,10 @@ async function rest(c, accountId) {
 async function hunt(c, accountId) {
   const state = runtimeFor(accountId);
   const party = selectedParty(accountId);
-  if (Date.now() < state.cooldownAt) return schedule(state.cooldownAt - Date.now(), accountId);
+  if (Date.now() < state.cooldownAt) {
+    debug(accountId, "hunt.cooldown", { cooldownAt: new Date(state.cooldownAt).toISOString(), waitMs: state.cooldownAt - Date.now() });
+    return schedule(state.cooldownAt - Date.now(), accountId);
+  }
   if (!partyVitalsValid(party)) throw new Error("出戰角色 HP／SP 或行動狀態無效，已停止");
   if (party.some((hero) => Number(hero.actionState) !== 0 || hero.perished || hero.hp <= 0)) throw new Error("出戰隊伍尚未全員空閒且存活；禁止開始狩獵");
   if (needsRest(c, accountId)) throw new Error("出戰角色未達 HP／SP 目標；禁止開始狩獵");
@@ -532,6 +608,7 @@ async function hunt(c, accountId) {
   if (current > c.target) throw new Error("目前樓層已超過目標，未啟用自動後退");
   const forward = current < c.target;
   if (forward && state.canForward !== true) throw new Error("尚未確認可前行；請檢查狩獵狀態");
+  debug(accountId, "hunt.start", { action: forward ? "forward" : "stay", currentStage: current, targetStage: c.target, party: partyDebug(party) });
   const result = await request(forward ? "/hunt?type=forward" : "/hunt", { method: "POST" }, accountId);
   const updates = result.huntInfo?.heroes || [];
   state.heroes = mergeHeroes(state.heroes, updates);
@@ -560,14 +637,16 @@ async function turn(accountId) {
     await refreshAccount(accountId);
     if (!state.running) return;
     const party = stopForInvalidParty(accountId);
-    if (state.deathMovePhase) { await continueDeathMove(accountId, party); return; }
-    if (state.deathRecoveryPhase) { await continueDeathRecovery(accountId); return; }
-    if (party.some((hero) => deathState(hero))) { await continueDeathMove(accountId, party); return; }
-    if (party.some((hero) => Number(hero.actionState) === 2)) { await rest(c, accountId); return; }
+    debug(accountId, "runner.turn", { config: c, party: partyDebug(party), deathMovePhase: state.deathMovePhase, deathRecoveryPhase: state.deathRecoveryPhase });
+    if (state.deathMovePhase) { operation(accountId, "runner.branch", { branch: "death-move" }); debug(accountId, "runner.branch", { branch: "death-move" }); await continueDeathMove(accountId, party); return; }
+    if (state.deathRecoveryPhase) { operation(accountId, "runner.branch", { branch: "death-recovery" }); debug(accountId, "runner.branch", { branch: "death-recovery" }); await continueDeathRecovery(accountId); return; }
+    if (party.some((hero) => deathState(hero))) { operation(accountId, "runner.branch", { branch: "death-detected" }); debug(accountId, "runner.branch", { branch: "death-detected" }); await continueDeathMove(accountId, party); return; }
+    if (party.some((hero) => Number(hero.actionState) === 2)) { operation(accountId, "runner.branch", { branch: "rest-existing" }); debug(accountId, "runner.branch", { branch: "rest-existing" }); await rest(c, accountId); return; }
     if (party.some((hero) => Number(hero.actionState) !== 0)) throw new Error("勾選出戰隊伍有移動或未識別行動；請先完成並重新讀取");
-    if (needsRest(c, accountId)) await rest(c, accountId);
-    else await hunt(c, accountId);
+    if (needsRest(c, accountId)) { operation(accountId, "runner.branch", { branch: "rest-needed" }); debug(accountId, "runner.branch", { branch: "rest-needed" }); await rest(c, accountId); }
+    else { operation(accountId, "runner.branch", { branch: "hunt" }); debug(accountId, "runner.branch", { branch: "hunt" }); await hunt(c, accountId); }
   } catch (error) {
+    if (error.name !== "AbortError") debug(accountId, "runner.error", { message: error.message || String(error) });
     if (error.name !== "AbortError") log(error.message || String(error), accountId);
     if (state.running) stopRunner(accountId, "已因錯誤停止");
   }
@@ -578,6 +657,8 @@ function startRunner(accountId) {
   const c = config(accountId);
   if (!validConfig(c)) { warn("請先設定有效的狩獵目標與 HP／SP 門檻", accountId); return; }
   state.running = true; state.restUntil = 0;
+  operation(accountId, "runner.started", { targetStage: c.target, hpTarget: c.hp, spTarget: c.sp });
+  debug(accountId, "runner.started", { config: c });
   if (accountId === activeId) { $("alert").hidden = true; document.title = "Autoy"; setState(null, accountId); }
   state.watchdog = setInterval(() => {
     const settings = config(accountId);
@@ -586,6 +667,22 @@ function startRunner(accountId) {
   renderAccounts(); log("開始此帳號自動狩獵；先檢查出戰名單與目前行動", accountId); turn(accountId);
 }
 function stopAll() { for (const account of accounts) stopRunner(account.id); }
+async function copyText(text, successMessage) {
+  try {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+    else {
+      const textarea = document.createElement("textarea");
+      textarea.value = text; textarea.style.position = "fixed"; textarea.style.opacity = "0";
+      document.body.appendChild(textarea); textarea.select();
+      const copied = document.execCommand("copy");
+      textarea.remove();
+      if (!copied) throw new Error("瀏覽器拒絕複製");
+    }
+    log(successMessage, activeId);
+  } catch (error) {
+    warn(`複製失敗：${error.message || error}`, activeId);
+  }
+}
 function initAccountEvents() {
   $("account-form").onsubmit = (event) => {
     event.preventDefault();
@@ -601,12 +698,24 @@ function initAccountEvents() {
   $("start").onclick = () => startRunner(activeId);
   $("stop").onclick = () => stopRunner(activeId);
   const stopAllButton = $("stop-all"); if (stopAllButton) stopAllButton.onclick = stopAll;
-  for (const id of ["target-stage", "hp-target", "sp-target", "rest-minutes", "alert-minutes"]) $(id).addEventListener("change", persistSettings);
+  $("clear-events").onclick = () => { const state = runtimeFor(activeId); state.messages = []; renderFlowMessages(activeId); };
+  $("copy-events").onclick = () => copyText($("events").textContent, "流程訊息已複製");
+  $("clear-operations").onclick = () => { const state = runtimeFor(activeId); state.operations = []; renderOperations(activeId); };
+  $("copy-operations").onclick = () => copyText(JSON.stringify(runtimeFor(activeId).operations, null, 2), "操作紀錄 JSON 已複製");
+  for (const id of ["target-stage", "hp-target", "sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console"]) $(id).addEventListener("change", () => {
+    persistSettings();
+    if (id === "operation-log" && $("operation-log").checked) operation(activeId, "operation-log.enabled", { message: "使用者啟用操作紀錄" });
+    renderFlowMessages(activeId); renderOperations(activeId);
+  });
 }
 function init() {
   initAccountEvents();
   if (active()) loadSettings();
   render();
   for (const account of accounts) refreshAccount(account.id).catch((error) => log(`讀取帳號資料失敗：${error.message || error}`, account.id));
+  setInterval(() => {
+    if (document.hidden || !activeId) return;
+    refreshAccount(activeId, { quiet: true }).catch((error) => log(`自動重新讀取失敗：${error.message || error}`, activeId));
+  }, 15000);
 }
 init();

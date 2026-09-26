@@ -7,14 +7,21 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main>
+    <main class="app-shell">
       <header><h1>Autoy</h1><p>多角色自動狩獵</p></header>
-      <section class="card">
-        <h2>帳號</h2>
-        <form id="account-form"><input id="account-label" placeholder="帳號別名" maxlength="40" required /><input id="account-token" type="password" placeholder="遊戲 API token" autocomplete="off" required /><button>新增帳號</button></form>
-        <div id="accounts"></div>
-      </section>
-      <section class="card" id="automation-card" hidden>
+      <div class="workspace">
+        <aside class="card sidebar" id="hero-panel">
+          <div class="heading"><h2>角色</h2><span id="party-summary" class="badge">尚未讀取</span></div>
+          <p class="hint">以遊戲目前勾選的出戰角色為準；畫面會每 15 秒自動更新。</p>
+          <div id="heroes" class="heroes"></div>
+        </aside>
+        <div class="content">
+          <section class="card">
+            <h2>帳號</h2>
+            <form id="account-form"><input id="account-label" placeholder="帳號別名" maxlength="40" required /><input id="account-token" type="password" placeholder="遊戲 API token" autocomplete="off" required /><button>新增帳號</button></form>
+            <div id="accounts"></div>
+          </section>
+          <section class="card" id="automation-card" hidden>
         <div class="heading"><h2 id="active-label"></h2><span id="run-state" class="badge">已停止</span></div>
         <div class="settings">
           <label>目標樓層<input id="target-stage" type="number" min="1" value="1" /></label>
@@ -22,15 +29,19 @@
           <label>體力 SP 目標 %<input id="sp-target" type="number" min="1" max="100" value="70" /></label>
           <label>休息最小分鐘<input id="rest-minutes" type="number" min="0.1" step="0.1" value="1" /></label>
           <label>無動作提醒分鐘<input id="alert-minutes" type="number" min="1" step="1" value="3" /></label>
+          <label class="checkbox-setting"><input id="flow-messages" type="checkbox" checked /> 顯示流程訊息</label>
+          <label class="checkbox-setting"><input id="operation-log" type="checkbox" /> 啟用操作紀錄</label>
+          <label class="checkbox-setting"><input id="debug-console" type="checkbox" /> Console 除錯紀錄</label>
         </div>
-        <p id="party-summary" class="hint"></p>
         <div class="actions"><button id="refresh">重新讀取</button><button id="start" class="primary">啟動此帳號</button><button id="stop" class="danger">停止此帳號</button><button id="stop-all" class="danger">停止全部帳號</button></div>
-        <p class="hint">只讓勾選出戰角色行動，每帳號最多 4 名；每個 token 可獨立同時狩獵。全隊達 HP／SP 目標後，低於目標樓層就前行；到達目標後原地狩獵。</p>
+        <p class="hint">停止後可在遊戲調整出戰角色；Autoy 會自動重新讀取並在下次啟動前以最新名單驗證。流程訊息適合日常查看；「啟用操作紀錄」會記錄本次頁面操作，格式接近爬蟲紀錄；Console 保留 API 細節。三者都不會輸出 token。</p>
         <p id="alert" class="alert" hidden></p>
         <div id="death-actions"></div>
-        <div id="heroes" class="heroes"></div>
-      </section>
-      <section class="card"><h2>事件</h2><pre id="events"></pre></section>
+          </section>
+          <section class="card" id="flow-card"><div class="heading"><h2>流程訊息</h2><div class="actions"><button id="copy-events">複製訊息</button><button id="clear-events">清除</button></div></div><pre id="events"></pre></section>
+          <section class="card" id="operation-card" hidden><div class="heading"><h2>操作紀錄</h2><div class="actions"><button id="copy-operations">複製 JSON</button><button id="clear-operations">清除</button></div></div><p class="hint">只在啟用後記錄。包含 API 方法、路徑、成功／失敗、耗時與自動流程事件；不記錄 token、headers、request body 或 response body。</p><pre id="operations"></pre></section>
+        </div>
+      </div>
     </main>
     <script src="./app.js"></script>
   </body>
