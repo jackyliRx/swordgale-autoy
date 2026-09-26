@@ -1,390 +1,45 @@
-# Autoy API Contract
+﻿# Autoy API Contract
 
-> Status: observation-based. Only use a write/action endpoint after it has
-> been observed from an authorized account and confirmed with a single manual
-> action.
+此文件只列出 Tampermonkey API Recorder 已實際錄到的端點。請求使用遊戲頁面的 `token` request header；token 僅保存於使用者瀏覽器，不可寫入紀錄、範例或版本庫。
 
-## Shared rules
+## 英雄
 
-- Base URL observed: `https://myteam.swordgale.online/api`
-- Authentication is supplied as the raw JWT in the HTTP `token` request
-  header. It is not a Bearer Authorization header.
-- The server exposes the `token` response header. When a successful response
-  contains a replacement value, update only the matching account's local token
-  before the next request.
-- The requests below returned HTTP 200 from an authenticated browser session.
-- Examples intentionally omit character names, complete timestamps, and
-  account-specific progress.
-- Autoy stores multiple account tokens separately in browser `localStorage`,
-  along with settings scoped to each account. Switching accounts stops the
-  displayed role view without changing other accounts' runners. Each account
-  has its own runner, timers, cooldowns, request aborters, and role snapshots.
-
-## `GET /heroes`
-
-Lists all role cards available to the current account. This establishes that a
-single account may own and manage more than one hero.
-
-| Property | Type | Meaning observed |
-| --- | --- | --- |
-| `heroes` | `HeroCard[]` | All role cards for the authenticated account |
-| `HeroCard.id` | number | Stable role-card identifier; use as `heroId` internally |
-| `name` | string | Display name |
-| `hp`, `sp` | number | Current health and skill points |
-| `fullHp`, `fullSp` | number | Maximum health and skill points |
-| `lv`, `exp`, `fullExp` | number | Level and experience state |
-| `perished` | boolean | Whether the role is unavailable due to defeat |
-| `actionState` | number | Action state code; enum is unknown |
-| `actionTarget` | unknown/null | Current action target, when available |
-| `actionStart`, `actionCompleteTime` | ISO date-time | Action timing data |
-| `canComplete` | boolean | Whether a current action can be completed |
-| `huntZone`, `huntStage`, `zoneName` | number, number, string | Hunt location/progress |
-| `forge`, `tailor`, `craft`, `efficiency` | number | Crafting-related values |
-| weapon fields | numeric string | Weapon coefficients, such as `sword` and `rapier` |
-
-Two observed role cards both reported `selected: true`. Therefore `selected`
-is the observed roster selection field. Autoy must include only records with
-`selected: true` in its active hunt party and exclude `selected: false` roles
-from party readiness checks. User-confirmed limit: no more than four roles may
-be dispatched. If the selection field is absent/non-boolean, no role is
-selected, or more than four are selected, stop before any rest or hunt write.
-
-Hunt/completion responses may return reduced role objects without the
-`selected` field; merge those fields into the latest `/heroes` snapshot while
-preserving each role's selection value.
-
-## `GET /heroes/{heroId}`
-
-Loads one role card's full detail. A role-card click produced this read request;
-it did not produce a state-changing "select hero" request. The frontend should
-therefore hold `heroId` in its route and pass it explicitly to role-scoped API
-methods.
-
-Additional observed properties include base attributes (`str`, `tou`, `agi`,
-`tec`, `int`, `lck`), profession values (`hunt`, `mining`, `logging`),
-`position`, `tier`, `potential`, reincarnation data, and `recyclePrice`.
-
-## `GET /heroes/{heroId}/statuses`
-
-Lists the active status effects for a specific role card.
-
-| Property | Type | Meaning observed |
-| --- | --- | --- |
-| `statuses` | array | Active role-status entries; empty for both observed roles |
-
-## `GET /equipments`
-
-Lists the account's equipment inventory. It is not role-scoped at the endpoint
-level. An equipment record's `equipped` property contains the `heroId` of the
-role currently using it, or should be treated as absent when unequipped.
-
-Autoy should fetch this once at account scope and derive each card's equipped
-items by filtering `equipment.equipped === heroId`.
-
-## `POST /heroes/{heroId}/completeAction`
-
-Completes the role's current completed action. Observed without a request body.
-The response returned the updated role under `hero` and a human-readable
-`message`. In the observed case it restored HP and SP, then set
-`hero.actionState` to `0`.
-
-This endpoint changes game state. The runner must call it only when the latest
-`GET /heroes` or `GET /heroes/{heroId}` response reports `canComplete: true`.
-It must use a per-role idempotency guard: after issuing the request, mark the
-turn as pending, refresh state, and never retry the POST merely because its
-response timed out. A later state refresh determines whether the action
-completed.
-
-## `POST /heroes/restAll`
-
-Observed from the UI action labelled 「全部休息」. The observed request had no
-request body. It starts rest for every participating role in the account and
-returns a hunt-info-shaped response with the updated `heroes` list.
-
-Each returned role had `actionStart` and `actionCompleteTime`; both roles
-received the same completion time in the observed run. `actionState` was `2`
-while resting. Treat these as observed values, and schedule from the returned
-`actionCompleteTime` rather than a hard-coded 60-second duration.
-
-The end-to-end party rest sequence is:
-
-1. Call `POST /heroes/restAll` once.
-2. Wait until the latest returned completion time plus a safety margin.
-3. Call `POST /heroes/restAll/complete` once.
-4. Use the returned party snapshot to confirm every enabled role is idle.
-5. Start a hunt only after the full party is idle.
-
-## `POST /heroes/restAll/complete`
-
-Observed from the UI action labelled 「全部完成休息」. The observed request had
-no request body. It completes the whole account party's rest in one action and
-returns `huntInfo.heroes` with every observed role at `actionState: 0`, plus a
-localized recovery message for each role.
-
-For party rest, this replaces individual `POST /heroes/{heroId}/completeAction`
-calls. The runner must wait for the server's completion time, issue this POST
-once, and on network uncertainty refresh party state before taking another
-action.
-
-## Configurable repeat-rest policy
-
-A hunt party has these rest settings:
-
-| Setting | Type | Meaning |
-| --- | --- | --- |
-| `hpTargetPercent` | integer, 1–100 | Minimum HP percentage required for every enabled role |
-| `spTargetPercent` | integer, 1–100 | Minimum SP/體力 percentage required for every enabled role |
-| `restIntervalMinutes` | positive decimal | Minimum desired rest duration for one cycle; changeable while the runner is waiting |
-
-After a rest completes, calculate each enabled role's percentages from the
-latest server state: `hp / fullHp * 100` and `sp / fullSp * 100`. A party is
-ready only when **every** enabled role reaches both configured targets.
-
-Repeat-rest algorithm:
-
-1. If the party is already ready, leave rest mode.
-2. Call `POST /heroes/restAll` once and retain the returned latest
-   `actionCompleteTime`.
-3. Schedule completion at the later of the server completion time and
-   `rest started time + restIntervalMinutes`. A setting below the server action
-   duration cannot make completion happen earlier.
-4. Call `POST /heroes/restAll/complete` once, then refresh party state.
-5. If any enabled role remains below either target, begin the next rest cycle;
-   otherwise allow the hunt runner to continue.
-
-If a role is dead or perished, pause hunting and run the death recovery flow.
-If the flow fails, a role is missing, has an invalid maximum HP/SP, or cannot be
-refreshed, stop that account runner and show the reason.
-
-## Startup/resume from an existing rest action
-
-Every 「開始自動狩獵」 turn begins with fresh `GET /heroes` and
-`GET /huntInfo` data. If every participating role is already in the observed
-rest state (`actionState: 2`), Autoy resumes that rest cycle instead of calling
-`restAll` again or attempting to hunt. It waits until both the server's
-`actionCompleteTime` and the account's configured minimum interval have passed.
-It then requires `canComplete: true` for every resting role before issuing one
-`POST /heroes/restAll/complete`.
-
-After completing the existing rest, the runner refreshes state and checks each
-role's HP/SP percentages. If every role meets both thresholds and the entire
-party is idle, it can continue to the configured hunt action. If any role is
-below either threshold, it begins another complete party-rest cycle. Mixed
-rest/idle states, non-idle actions, empty role lists, invalid vitals, or
-unknown action states stop the runner; they never fall through to a hunt POST.
-
-## Multi-role hunt coordination
-
-User-confirmed game rule: when two or more role cards are dispatched together,
-every participating role must finish rest or any existing action before the
-next hunt starts. Starting a hunt while another participating role is still
-busy causes only one role to act.
-
-Autoy must therefore model a `HuntParty`, not independent battle loops:
-
-1. Load the current state for every enabled party member.
-2. For a party rest, use `restAll`, wait for its server completion time, then
-   use `restAll/complete` once.
-3. If any member is still busy, dead/perished, missing, or has an unknown
-   action state, do not make a hunt-start request. Dead roles enter the
-   automatic move/recovery flow; other unknown busy states wait or stop with a
-   clear reason.
-4. Begin the next hunt only after every enabled member is confirmed idle by
-   the API contract.
-5. Lock the party during start and completion. A different party under the
-   same account must wait until the lock is released.
-
-The complete `actionState` enum remains unconfirmed. Use `canComplete` and
-server timestamps as control data; the observed rest value must not be
-generalized to other actions.
-
-## `POST /hunt` — original-location hunt
-
-Observed from the UI action labelled 「原地狩獵」. The observed request had no
-request body. It executed one hunt for all currently participating role cards
-under the account: the returned combat report contained both roles, and
-`huntInfo.heroes` contained both updated role states.
-
-| Response property | Use in Autoy |
+| 端點 | 用途與證據 |
 | --- | --- |
-| `report` | Display-only battle report. Do not parse localized messages as control logic. |
-| `huntInfo.heroes` | Updated party snapshot after the hunt. |
-| `huntInfo.huntAvailableAt` | Server-authoritative earliest time for the next hunt. |
-| `huntInfo.attackAvailableAt` | Server-authoritative earliest time for the next attack action. |
-| `huntInfo.canBack`, `huntInfo.canForward` | Available hunt navigation; endpoint contracts remain unconfirmed. |
-| `equipmentChanges` | Update local durability/inventory cache from server data. |
-| `money`, `huntCount` | Account progress summary. |
+| `GET /api/heroes/{heroId}` | 取得單一英雄詳細資料，已錄到 HTTP 200；不能取代完整帳號英雄列表 `GET /api/heroes`。 |
 
-Runner rules:
+## 休息與一般死亡復原
 
-1. Refresh the whole party and pass the multi-role readiness barrier before
-   calling this endpoint.
-2. Issue one POST only. On network uncertainty, refresh `/heroes` and hunt
-   status before considering another attempt.
-3. Schedule the next decision from the returned ISO timestamps, with a small
-   safety margin; never calculate cooldown duration locally.
-4. Keep future `attack` and back requests disabled until their UI actions and
-   endpoint contracts have been recorded.
-
-## `POST /hunt?type=forward` — move forward and hunt
-
-Observed from the UI action labelled 「前行」. The request has no body and uses
-the query string `type=forward`. In the observed response it ran a full
-multi-role combat report and advanced `huntInfo.huntStage` from 2 to 3 while
-remaining in the same `huntZone`.
-
-The response has the same top-level shape as `POST /hunt`: `report`,
-`huntInfo`, `equipmentChanges`, `money`, and `huntCount`. It also supplies new
-`huntAvailableAt` and `attackAvailableAt` timestamps.
-
-The runner may issue this request only after the latest party snapshot reports
-`canForward: true`, all enabled roles pass the party readiness barrier, and the
-applicable server cooldown has passed. Confirm the returned stage instead of
-assuming it always increases by one. Do not retry an uncertain POST; refresh
-party/hunt state first.
-
-## Target-stage auto-hunt mode
-
-The user configures `targetHuntStage` as a positive integer. The runner uses
-the latest server-provided `huntInfo.huntStage`, not a locally incremented
-counter:
-
-| Current state | Action |
-| --- | --- |
-| Any party member is below the configured HP/SP targets | Run the repeat-rest policy. |
-| Current time is before `huntAvailableAt` | Wait until the server timestamp. |
-| `huntStage < targetHuntStage` and `canForward` is true | `POST /hunt?type=forward` once. |
-| `huntStage === targetHuntStage` | `POST /hunt` once for original-location hunting. |
-| `huntStage > targetHuntStage` | Stop with `target exceeded`; automatic backtracking is not implemented. |
-| `huntStage < targetHuntStage` and `canForward` is false | Stop with `forward unavailable`; do not substitute original hunting. |
-
-After each POST, refresh from the returned `huntInfo`, recalculate party
-readiness, and schedule the next decision from the returned cooldown time.
-
-## Death and final-death policy
-
-The runner distinguishes two game states:
-
-| State | Allowed recovery action | Automation behavior |
+| 端點 | Body | 已確認回應與規則 |
 | --- | --- | --- |
-| `死亡` | `POST /heroes/reviveAll`; then complete each selected hero when `canComplete: true` | Pause hunting, move to grassland, start rebirth, wait for server time, complete per hero, then resume readiness checks. Since `reviveAll` is account-wide, stop if an unchecked hero is also in normal-death state. |
-| `死透了` | `POST /heroes/{heroId}/reincarnate` | Pause hunting, move to grassland, reincarnate selected heroes one at a time, refresh after each POST, then resume only after verification. |
+| `POST /api/heroes/restAll` | 無 | 樣本中英雄進入 `actionState: 2`，回傳 `actionCompleteTime`；等待時間依伺服器回傳值。 |
+| `POST /api/heroes/restAll/complete` | 無 | 回傳 `huntInfo` 與恢復訊息；樣本中英雄回到 `actionState: 0`。完成後重讀完整英雄列表確認出戰名單和 HP/SP。 |
+| `POST /api/heroes/reviveAll` | 無 | HTTP 200，回傳 3 張角色卡。一般死亡角色進入 `actionState: 3`、`canComplete: false`，並有約 10 分鐘後的 `actionCompleteTime`。這是帳號批次操作；依使用者決定，不限制未勾選角色，runner 對帳號內所有一般死亡角色等待與驗證。 |
+| `POST /api/heroes/reviveAll/complete` | 無 | HTTP 200，完成整批重生；樣本中 3 張角色卡均為 `actionState: 0`，兩名出戰角色 `perished: false` 且 HP 已恢復。發送前須確認帳號內所有一般死亡角色均 `canComplete: true`；完成後重讀完整英雄列表驗證。 |
+| `POST /api/heroes/{heroId}/completeAction` | 尚待補錄 body | 已在其他單一行動操作錄到。一般死亡批次重生使用 `/heroes/reviveAll/complete`，不是逐角呼叫此端點。 |
 
-Neither state may enter rest or hunting actions. The auto-hunt runner keeps
-running the death workflow: return/move, recover the selected dead heroes, then
-refresh the full party and require every selected hero to pass normal HP/SP and
-action-state checks before resuming. The current observed role fields
-distinguish the states: `hp: 0, perished: false` is `死亡`, while
-`perished: true` is `死透了`.
+## 狩獵
 
-## `POST /heroes/reviveAll`
-
-Observed from the game UI action 「全部重生」 with no request body. It returns
-the party's `heroes` array. In the capture, a normal-death hero
-(`hp: 0, perished: false`) entered `actionState: 3` with a future
-`actionCompleteTime` approximately ten minutes later and `canComplete: false`;
-a final-death hero (`perished: true`) remained unchanged. Thus this endpoint
-starts rebirth for eligible normal-death roles and does not handle final-death
-reincarnation.
-
-Use each returned `actionCompleteTime` as the next status-refresh time, with a
-small safety margin; do not hard-code ten minutes. Refresh `/heroes` then, and
-only complete selected heroes when the fresh response reports `actionState: 3`
-and `canComplete: true`. Do not automatically repeat a POST after an uncertain
-response. Because this is an account-level batch endpoint, the runner first
-checks that no unchecked hero is also in normal-death state.
-
-The recorder console confirmed an individual reincarnation POST at
-`/heroes/{heroId}/reincarnate`. The supplied raw log file does not contain this
-request entry, so its request body and response schema remain unverified.
-During an active auto-hunt run, Autoy sends this action only for selected
-heroes with `perished: true`, one hero at a time, sends no body, then refreshes
-`/heroes`. If the result is uncertain or the role is still perished, stop; do
-not retry. When the runner is stopped, the manual button still asks for
-confirmation.
-
-## `POST /move/0`
-
-Observed from the user's 「回程」 capture, with no request body. The response
-includes `huntZone`, `huntStage`, `zoneName`, `canBack`, `canForward`, cooldown
-timestamps, and a `heroes` array. The captured result placed the returned hero
-at 「大草原」 stage 1 and gave it `actionState: 1` with a future
-`actionCompleteTime`. This supports describing the action as a return to the
-starting point; the capture does not establish that it moves to a named town
-or that it restores every member of a multi-hero party. The auto-hunt death
-recovery flow refreshes `/heroes` and `/huntInfo`, completes only when every
-selected hero is ready, and validates the resulting location. It continues
-into automatic rebirth/reincarnation, then resumes hunting after the selected
-party is alive and passes the HP/SP readiness checks.
-
-## `POST /move/1`
-
-Observed in the user's 「前往-大草原」 Console entry on 2026-09-25:
-`POST https://myteam.swordgale.online/api/move/1`, HTTP 200, about 64 ms.
-The local recorder capture shows the response still at 初始之鎮 `0/0`, with
-four heroes at `actionState: 1`, a shared `actionCompleteTime` of
-`2026-09-25T19:30:38.095Z`, and `canBack: false`, `canForward: false`. The
-request body was not present in the supplied recorder entry. After waiting and
-completing the move, the separate 「完成移動-大草原」 capture verified arrival
-at 大草原 `1/1`. The implementation waits for all selected heroes to be
-completable, then validates final location and stops on mismatch.
-
-## `POST /move/complete`
-
-Observed from the game UI action 「完成移動」 with no request body. The latest
-「完成移動-大草原」 capture at `2026-09-25T19:30:55.904Z` returned HTTP 200 in
-59 ms, with `huntZone: 1`, `huntStage: 1`, `zoneName: 大草原`,
-`canForward: true`, and two heroes returned to `actionState: 0`; the UI then
-requested `GET /zoneUsers` (HTTP 200, 67 ms, response key `users`). Both
-captures returned the role to idle (`actionState: 0`), but the destination
-depends on the move context: one response was `huntZone: 0`, `huntStage: 0`,
-`zoneName: 初始之鎮`, `canForward: false`; another was `huntZone: 1`,
-`huntStage: 1`, `zoneName: 大草原`, `canForward: true`. Treat the endpoint
-response (and a fresh `/huntInfo`) as authoritative; do not assume it always
-returns to town. The frontend also requested `GET /zoneUsers` afterward. Only
-complete movement when fresh responses show all selected heroes at
-`actionState: 1` and `canComplete: true`. After the POST, refresh `/heroes` and
-`/huntInfo`; the death recovery flow may continue to zone ID 1 only after
-confirming town `0/0`.
-
-## `GET /reports/defend/status`
-
-Returned a status object with `newReportId`, which was `null` in the observed
-response. This is unrelated to role selection and should remain a passive
-notification query.
-
-## Supporting read endpoints
-
-| Endpoint | Response property | Purpose |
+| 端點 | Body | 已確認回應與規則 |
 | --- | --- | --- |
-| `GET /quests` | `active`, `cooldown` | Current quests and quest-roll availability |
-| `GET /achievements` | `achievements`, `stats` | Achievement list and account statistics |
-| `GET /profile` | account summary | Account ID, currency, expansions, and hero-slot limit |
-| `GET /zones` | `zones` | Available hunt-zone metadata |
-| `GET /huntInfo` | `heroes`, `huntStage`, cooldowns, navigation | Authoritative current hunt-party state; use this to initialize `canForward` and cooldown values after a page reload |
-| `GET /captcha` | `pendingCaptchaId`, `sitekey` | Read-only CAPTCHA status; the app must stop and ask the user to complete any CAPTCHA themselves |
+| `POST /api/hunt` | 無 | 原地狩獵。回傳 `report`、`huntInfo`、`equipmentChanges`、`money`、`huntCount` 及伺服器 `huntAvailableAt`、`attackAvailableAt`。 |
+| `POST /api/hunt?type=forward` | 無 | 狩獵並前行。一般樣本到大草原第 2 層；死亡樣本到第 5 層，戰報有英雄死亡，該英雄在 `huntInfo.heroes` 為 `hp: 0`、`perished: false`、`actionState: 0`。 |
 
-## Required next captures
+## 移動
 
-1. [Confirmed] A role-card click reads `GET /heroes/{heroId}` and
-   `GET /heroes/{heroId}/statuses`; no selection write request was observed.
-2. [Confirmed] `POST /heroes/{heroId}/completeAction` completes an available
-   action. It must be guarded by a fresh `canComplete: true` check and never
-   automatically retried after an uncertain response.
-3. [Confirmed] 「全部重生」 calls `POST /heroes/reviveAll` without a body;
-   it starts rebirth for normal-death heroes and leaves final-death heroes
-   unchanged. The response provides `actionCompleteTime` for each rebirth.
-4. [Confirmed] 「全部休息」 calls `POST /heroes/restAll` with no observed request
-   body and starts rest for all participating role cards.
-5. [Confirmed] 「全部完成休息」 calls `POST /heroes/restAll/complete` with no
-   observed request body and completes all resting role cards in one action.
-5. [Confirmed] 「原地狩獵」 calls `POST /hunt` with no observed request body and
-   returns a combined multi-role report plus server cooldown timestamps.
-6. [Confirmed] 「前行」 calls `POST /hunt?type=forward` with no observed request
-   body and returns a combined multi-role report plus server cooldown timestamps.
-7. Capture the remaining UI actions available after `huntAvailableAt` or
-   `attackAvailableAt` (attack or back) before automating them.
-8. Establish whether two role cards can act concurrently or share an account
-   action queue before enabling same-account parallel automation.
-9. Capture a `死亡` role's detail response and its manual 「重生／復活」 action.
-10. Capture a `死透了` role's detail response and its manual 「轉生／復活」 action.
+| 端點 | Body | 已確認回應與規則 |
+| --- | --- | --- |
+| `POST /api/move/0` | 無 | 「回城」從大草原啟動移動，HTTP 200；樣本中 2 名英雄進入 `actionState: 1`。 |
+| `POST /api/move/1` | 無 | 「前往大草原」從初始之鎮啟動移動，HTTP 200；樣本中 2 名英雄進入 `actionState: 1`。 |
+| `POST /api/move/complete` | 無 | 兩方向都已錄得 HTTP 200：回城完成到初始之鎮 `0/0`；前往大草原完成到大草原 `1/1`。 |
+
+## 共通限制
+
+- `huntInfo.heroes` 沒有 `selected`；出戰名單要以完整 `GET /api/heroes` 為準。
+- 狩獵前確認出戰人數為 1 至 4 名。
+- `reviveAll` 為帳號批次操作；使用者明確選擇不限未勾選角色。呼叫與完成前仍讀取完整英雄狀態，讓整批死亡角色都進入已知重生狀態並全部可完成，避免批次狀態不一致。
+- 移動請求的 `{n}` 是移動操作參數，不是地圖 ID；最終目的地要在完成移動後以座標驗證。
+- 寫入成功後依伺服器時間、冷卻、位置和英雄狀態排程，不猜測固定等待時間。
+- 尚未錄製的轉生、攻擊、後退端點先手動錄製，再加入自動化。
+
+對應錄製摘要見 [API 錄製索引](API錄製/README.md)。

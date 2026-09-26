@@ -1,6 +1,5 @@
-# Raw recorder exports may contain game/account data. Keep only sanitized docs.
-docs/Example/*.js
-docs/Example/前往-大草原
+# Raw Tampermonkey exports may contain game/account data. Keep only sanitized docs.
+docs/API錄製/*.json
 
 # Local editor and operating-system files
 .DS_Store

@@ -230,24 +230,25 @@ function renderHeroes(accountId = activeId) {
   const party = state.heroes.filter((hero) => hero.selected === true);
   const deaths = party.filter((hero) => deathState(hero) === "death");
   const finalDeaths = party.filter((hero) => deathState(hero) === "final-death");
+  const accountDeaths = state.heroes.filter((hero) => deathState(hero) === "death");
   for (const hero of party) scheduleObservedAction(hero, accountId);
-  const readyToComplete = deaths.filter((hero) => Number(hero.actionState) === 3 && hero.canComplete === true);
-  const canStartRevive = deaths.some((hero) => Number(hero.actionState) !== 3);
+  const readyToComplete = deaths.length > 0 && accountDeaths.every((hero) => Number(hero.actionState) === 3 && hero.canComplete === true);
+  const canStartRevive = deaths.length > 0 && accountDeaths.every((hero) => Number(hero.actionState) === 0);
   const canCompleteMove = party.some((hero) => Number(hero.actionState) === 1 && hero.canComplete === true);
   const controls = [];
   if (!state.running && (deaths.length || finalDeaths.length)) controls.push('<button id="return-start" class="primary">回程／返回起點</button>');
   if (!state.running && canCompleteMove) controls.push('<button id="complete-move">完成移動</button>');
   if (!state.running && canStartRevive) controls.push('<button id="revive-all" class="primary">全部重生</button>');
-  if (!state.running) for (const hero of readyToComplete) controls.push(`<button data-complete-revive="${encodeURIComponent(hero.id)}" ${state.recoveryRequests.has(String(hero.id)) ? "disabled" : ""}>完成 ${safe(hero.name)} 重生</button>`);
+  if (!state.running && readyToComplete) controls.push('<button id="complete-revive-all" class="primary">完成全部重生</button>');
   if (!state.running) for (const hero of finalDeaths) controls.push(`<button data-reincarnate="${encodeURIComponent(hero.id)}" class="danger" ${state.recoveryRequests.has(String(hero.id)) ? "disabled" : ""}>單獨轉生 ${safe(hero.name)}</button>`);
   if (!state.running && finalDeaths.length) controls.push('<a class="recovery-link" href="https://myteam.swordgale.online/heroes" target="_blank" rel="noopener noreferrer">前往遊戲角色頁</a>');
   $("death-actions").innerHTML = deaths.length || finalDeaths.length
-    ? `<div class="recovery-actions"><strong>出戰隊伍復原</strong><p>${state.running ? "自動狩獵執行中：會自動回程，並對勾選出戰角色重生或逐角轉生；復原後檢查 HP／SP 並繼續狩獵。" : "只依勾選出戰角色判斷復原對象。一般死亡使用帳號批次重生 API；死透角色逐角轉生。"}</p><div class="actions">${controls.join("")}</div></div>`
+    ? `<div class="recovery-actions"><strong>出戰隊伍復原</strong><p>${state.running ? "自動狩獵執行中：會自動回城，對帳號內所有一般死亡角色批次重生，並對出戰死透角色逐角轉生；復原後檢查 HP／SP 並繼續狩獵。" : "狩獵與死透轉生依勾選出戰角色；一般死亡依你的設定，對帳號內所有一般死亡角色執行批次重生。"}</p><div class="actions">${controls.join("")}</div></div>`
     : "";
   const reviveButton = $("revive-all"); if (reviveButton) reviveButton.onclick = () => runManual(accountId, startReviveAll);
+  const completeReviveButton = $("complete-revive-all"); if (completeReviveButton) completeReviveButton.onclick = () => runManual(accountId, completeReviveAll);
   const returnButton = $("return-start"); if (returnButton) returnButton.onclick = () => runManual(accountId, returnToStart);
   const moveButton = $("complete-move"); if (moveButton) moveButton.onclick = () => runManual(accountId, completeMovement);
-  document.querySelectorAll("[data-complete-revive]").forEach((button) => button.onclick = () => runManual(accountId, () => completeRevive(button.dataset.completeRevive)));
   document.querySelectorAll("[data-reincarnate]").forEach((button) => button.onclick = () => runManual(accountId, () => reincarnateHero(button.dataset.reincarnate)));
   const selectedCount = state.heroes.filter((hero) => hero.selected === true).length;
   $("party-summary").textContent = `${selectedCount} 名勾選出戰／最多 4 名`;
@@ -347,28 +348,26 @@ async function continueDeathRecovery(accountId) {
   party = selectedParty(accountId);
   const ordinaryDeaths = party.filter((hero) => deathState(hero) === "death");
   if (ordinaryDeaths.length) {
-    const reviving = ordinaryDeaths.filter((hero) => Number(hero.actionState) === 3);
-    if (reviving.length && reviving.length !== ordinaryDeaths.length) throw new Error("出戰角色重生狀態不一致；不重複送出全部重生，請重新檢查角色");
+    const accountDeaths = state.heroes.filter((hero) => deathState(hero) === "death");
+    const reviving = accountDeaths.filter((hero) => Number(hero.actionState) === 3);
+    if (reviving.length && reviving.length !== accountDeaths.length) throw new Error("帳號內死亡角色重生狀態不一致；不重複送出全部重生，請重新檢查角色");
     if (reviving.length) {
-      if (!reviving.every((hero) => hero.canComplete === true)) {
-        scheduleDeathRecovery(accountId, reviving, "一般死亡角色正在重生");
+      if (!accountDeaths.every((hero) => Number(hero.actionState) === 3)) throw new Error("帳號內死亡角色重生狀態不一致；不呼叫批次完成端點，請重新檢查角色");
+      if (!accountDeaths.every((hero) => hero.canComplete === true)) {
+        scheduleDeathRecovery(accountId, accountDeaths, "一般死亡角色正在重生");
         return true;
       }
-      for (const hero of reviving) {
-        await request(`/heroes/${encodeURIComponent(hero.id)}/completeAction`, { method: "POST" }, accountId);
-        await refreshAccount(accountId);
-        const current = selectedParty(accountId).find((entry) => String(entry.id) === String(hero.id));
-        if (!current || deathState(current) === "death") throw new Error(`${hero.name} 完成重生後仍是死亡狀態；已停止以避免重複完成`);
-        log(`${hero.name} 已完成重生`, accountId);
-      }
+      const result = await request("/heroes/reviveAll/complete", { method: "POST" }, accountId);
+      state.heroes = mergeHeroes(state.heroes, result.heroes);
+      await refreshAccount(accountId);
+      const stillDead = selectedParty(accountId).filter((hero) => deathState(hero) === "death");
+      if (stillDead.length) throw new Error(`批次完成重生後仍有 ${stillDead.length} 名出戰角色死亡；停止以避免重複完成`);
+      log(`已完成全部重生（${ordinaryDeaths.length} 名出戰角色），重新檢查 HP／SP`, accountId);
     } else {
-      const uncheckedDeaths = state.heroes.filter((hero) => hero.selected === false && deathState(hero) === "death");
-      if (uncheckedDeaths.length) throw new Error(`未出戰角色有一般死亡；全部重生是帳號批次 API，為避免復原未勾選角色，自動流程已停止（${uncheckedDeaths.length} 名）`);
-      if (ordinaryDeaths.some((hero) => Number(hero.actionState) !== 0)) throw new Error("一般死亡角色有無法辨識的行動狀態；停止自動重生");
+      if (accountDeaths.some((hero) => Number(hero.actionState) !== 0)) throw new Error("帳號內一般死亡角色有無法辨識的行動狀態；停止自動重生");
       await request("/heroes/reviveAll", { method: "POST" }, accountId);
       await refreshAccount(accountId);
-      party = selectedParty(accountId);
-      const started = party.filter((hero) => deathState(hero) === "death");
+      const started = state.heroes.filter((hero) => deathState(hero) === "death");
       if (!started.length) {
         log("全部重生請求後，出戰角色已不再是死亡狀態", accountId);
         schedule(1000, accountId);
@@ -521,19 +520,34 @@ async function runManual(accountId, action) {
 }
 async function startReviveAll(accountId) {
   const state = runtimeFor(accountId);
-  if (!selectedParty(accountId).some((hero) => deathState(hero) === "death" && Number(hero.actionState) !== 3)) return;
-  if (state.heroes.some((hero) => hero.selected === false && deathState(hero) === "death")) { warn("未出戰角色也有一般死亡；全部重生是帳號批次 API，為避免影響未勾選角色，不會送出", accountId); return; }
+  const deaths = selectedParty(accountId).filter((hero) => deathState(hero) === "death");
+  const accountDeaths = state.heroes.filter((hero) => deathState(hero) === "death");
+  if (!deaths.length) return;
+  if (accountDeaths.some((hero) => Number(hero.actionState) !== 0)) { warn("帳號內一般死亡角色已有重生或未知行動；請重新讀取，避免重複呼叫全部重生", accountId); return; }
   try { const result = await request("/heroes/reviveAll", { method: "POST" }, accountId); state.heroes = mergeHeroes(state.heroes, result.heroes); renderHeroes(accountId); log("已對可重生角色開始全部重生；死透角色不會由此端點復原", accountId); stopForDeaths(accountId); }
-  catch (error) { warn(`全部重生失敗：${error.message || error}`, accountId); }
+  catch (error) {
+    try { await refreshAccount(accountId); } catch { /* Preserve the original write result for the operator. */ }
+    warn(`全部重生結果未確認：${error.message || error}；已嘗試重新讀取，請確認狀態後再操作`, accountId);
+  }
 }
-async function completeRevive(heroId, accountId) {
+async function completeReviveAll(accountId) {
   const state = runtimeFor(accountId);
-  const hero = selectedParty(accountId).find((entry) => String(entry.id) === String(heroId));
-  if (!hero || deathState(hero) !== "death" || Number(hero.actionState) !== 3 || hero.canComplete !== true) { log("角色尚未由 API 確認可完成重生，請重新讀取", accountId); return; }
-  state.recoveryRequests.add(String(hero.id)); renderHeroes(accountId);
-  try { await request(`/heroes/${encodeURIComponent(hero.id)}/completeAction`, { method: "POST" }, accountId); await refresh(accountId); log(`${hero.name} 已完成重生行動並更新角色狀態`, accountId); stopForDeaths(accountId); }
-  catch (error) { warn(`${hero.name} 重生完成結果未確認，請重新讀取後再操作：${error.message || error}`, accountId); }
-  finally { state.recoveryRequests.delete(String(hero.id)); renderHeroes(accountId); }
+  const party = selectedParty(accountId);
+  const deaths = party.filter((hero) => deathState(hero) === "death");
+  const accountDeaths = state.heroes.filter((hero) => deathState(hero) === "death");
+  if (!deaths.length || !accountDeaths.length || !accountDeaths.every((hero) => Number(hero.actionState) === 3 && hero.canComplete === true)) { log("帳號內全部一般死亡角色尚未由 API 確認可完成，請重新讀取", accountId); return; }
+  if (!window.confirm(`確定完成帳號內全部重生？目前有 ${accountDeaths.length} 名一般死亡角色。`)) return;
+  state.recoveryRequests.add("reviveAll"); renderHeroes(accountId);
+  try {
+    const result = await request("/heroes/reviveAll/complete", { method: "POST" }, accountId);
+    state.heroes = mergeHeroes(state.heroes, result.heroes);
+    await refreshAccount(accountId);
+    if (selectedParty(accountId).some((hero) => deathState(hero) === "death")) throw new Error("批次完成後仍有出戰角色死亡；請確認最新遊戲狀態，不要重複送出");
+    log("已完成全部重生並重新讀取角色狀態", accountId);
+  } catch (error) {
+    try { await refreshAccount(accountId); } catch { /* Do not repeat an uncertain batch write. */ }
+    warn(`全部重生完成結果未確認：${error.message || error}；請重新讀取，不要直接重複送出`, accountId);
+  } finally { state.recoveryRequests.delete("reviveAll"); renderHeroes(accountId); }
 }
 async function reincarnateHero(heroId, accountId) {
   const state = runtimeFor(accountId);
