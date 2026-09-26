@@ -9,9 +9,11 @@
 | 單一英雄詳細資料 | `GET /api/heroes/{heroId}` | [帳號英雄列表－角色詳細資料](帳號英雄列表-角色詳細資料.md) | `帳號英雄列表-角色詳細資料.json` |
 | 全部休息 | `POST /api/heroes/restAll` | [全部休息－出戰角色](全部休息-出戰角色.md) | `全部休息-出戰角色.json` |
 | 完成休息 | `POST /api/heroes/restAll/complete` | [完成休息－出戰角色](完成休息-出戰角色.md) | `完成休息-出戰角色.json` |
+| 死亡重生期間的存活隊員休息 | `POST /api/heroes/restAll`、`POST /api/heroes/restAll/complete` | [死亡重生－存活隊員全部休息](死亡重生-存活隊員全部休息.md) | `死亡重生-存活隊員全部休息.json` |
 | 原地狩獵 | `POST /api/hunt` | [原地狩獵](原地狩獵.md) | `原地狩獵.json` |
 | 狩獵前行 | `POST /api/hunt?type=forward` | [狩獵－前行](狩獵-前行.md) | `狩獵-前行.json` |
 | 狩獵造成死亡 | `POST /api/hunt?type=forward` | [狩獵－死亡](狩獵-死亡.md) | `狩獵-死亡.json` |
+| 狩獵戰報列表與詳情 | `GET /api/reports?type=hunt`、`POST /api/reports/{id}/view`、`GET /api/reports/{id}` | [戰報－列表與詳情](戰報-列表與詳情.md) | `autoy-api-recorder-2026-09-26T11-50-29-184Z.json` |
 | 全部重生 | `POST /api/heroes/reviveAll` | [全部重生](全部重生.md) | `全部重生.json` |
 | 全部重生－完成行動 | POST /api/heroes/reviveAll/complete | [全部重生－完成行動](全部重生-完成行動.md) | 全部重生-完成行動.json |
 | 回城（啟動移動） | `POST /api/move/0` | [回城](回城.md) | `回城.json` |
