@@ -1,4 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
+const uiVersion = "0.6.1";
 const storeKey = "autoy.accounts.v1";
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let activeId = accounts[0]?.id || null;
@@ -845,7 +846,7 @@ function startRunner(accountId) {
   const c = config(accountId);
   if (!validConfig(c)) { warn("請先設定有效的狩獵目標與 HP／SP 門檻", accountId); return; }
   state.running = true; state.restUntil = 0;
-  operation(accountId, "runner.started", { targetStage: c.target, hpTarget: c.hp, spTarget: c.sp });
+  operation(accountId, "runner.started", { version: uiVersion, targetStage: c.target, hpTarget: c.hp, spTarget: c.sp });
   debug(accountId, "runner.started", { config: c });
   if (accountId === activeId) { $("alert").hidden = true; document.title = "Autoy"; setState(null, accountId); }
   state.watchdog = setInterval(() => {
