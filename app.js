@@ -31,6 +31,25 @@ function operation(accountId, event, details = {}) {
   state.operations.splice(500);
   if (accountId === activeId) renderOperations(accountId);
 }
+function safeOperationPayload(value, depth = 0) {
+  if (depth > 8) return "[內容層級過深，已截斷]";
+  if (value === null || ["string", "number", "boolean"].includes(typeof value)) return typeof value === "string" && value.length > 16000 ? `${value.slice(0, 16000)}…[已截斷]` : value;
+  if (Array.isArray(value)) return value.slice(0, 100).map((item) => safeOperationPayload(item, depth + 1));
+  if (typeof value === "object") {
+    const result = {};
+    for (const [key, item] of Object.entries(value).slice(0, 100)) result[key] = /token|authorization|cookie|password|secret|api[_-]?key/i.test(key) ? "[已遮罩]" : safeOperationPayload(item, depth + 1);
+    return result;
+  }
+  return String(value);
+}
+function operationRequestBody(body) {
+  if (body === undefined || body === null || body === "") return null;
+  if (typeof body === "string") {
+    try { return safeOperationPayload(JSON.parse(body)); }
+    catch { return safeOperationPayload(body); }
+  }
+  return safeOperationPayload(body);
+}
 function renderOperations(accountId = activeId) {
   const account = accounts.find((entry) => entry.id === accountId);
   const state = runtimeFor(accountId);
@@ -116,24 +135,26 @@ async function request(path, options = {}, accountId = activeId) {
   const controller = new AbortController();
   state.aborters.add(controller);
   const startedAt = Date.now();
+  const requestId = crypto.randomUUID();
+  const requestBody = operationRequestBody(options.body);
   try {
-    operation(accountId, "api.request", { method, path });
+    operation(accountId, "api.request", { requestId, method, path, requestBody });
     debug(accountId, "api.request", { method, path });
     const response = await fetch(`${API}${path}`, { ...options, signal: controller.signal, headers: { token: account.token, ...(options.headers || {}) } });
     if (!response.ok) {
       const errorText = await response.text();
-      operation(accountId, "api.failure", { method, path, status: response.status, durationMs: Date.now() - startedAt, message: `HTTP ${response.status}` });
+      operation(accountId, "api.failure", { requestId, method, path, requestBody, status: response.status, durationMs: Date.now() - startedAt, responseBody: operationRequestBody(errorText) });
       debug(accountId, "api.error", { method, path, status: response.status, response: errorText });
       throw new Error(`API ${response.status}: ${errorText}`);
     }
     const rotatedToken = response.headers.get("token");
     if (rotatedToken && rotatedToken !== account.token) { account.token = rotatedToken.replace(/^Bearer\s+/i, ""); save(); renderAccounts(); log("已更新 API token", accountId); }
     const data = await response.json();
-    operation(accountId, "api.success", { method, path, status: response.status, durationMs: Date.now() - startedAt });
+    operation(accountId, "api.success", { requestId, method, path, requestBody, status: response.status, durationMs: Date.now() - startedAt, responseBody: safeOperationPayload(data) });
     debug(accountId, "api.success", { method, path, status: response.status });
     return data;
   } catch (error) {
-    if (error.name !== "AbortError") operation(accountId, "api.exception", { method, path, durationMs: Date.now() - startedAt, message: String(error.message || error).slice(0, 500) });
+    if (error.name !== "AbortError") operation(accountId, "api.exception", { requestId, method, path, requestBody, durationMs: Date.now() - startedAt, message: String(error.message || error).slice(0, 500) });
     if (error.name !== "AbortError") debug(accountId, "api.exception", { method, path, message: error.message || String(error) });
     throw error;
   } finally {

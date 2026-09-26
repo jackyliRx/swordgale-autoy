@@ -39,7 +39,7 @@
         <div id="death-actions"></div>
           </section>
           <section class="card" id="flow-card"><div class="heading"><h2>流程訊息</h2><div class="actions"><button id="copy-events">複製訊息</button><button id="clear-events">清除</button></div></div><pre id="events"></pre></section>
-          <section class="card" id="operation-card" hidden><div class="heading"><h2>操作紀錄</h2><div class="actions"><button id="copy-operations">複製 JSON</button><button id="clear-operations">清除</button></div></div><p class="hint">只在啟用後記錄。包含 API 方法、路徑、成功／失敗、耗時與自動流程事件；不記錄 token、headers、request body 或 response body。</p><pre id="operations"></pre></section>
+          <section class="card" id="operation-card" hidden><div class="heading"><h2>操作紀錄</h2><div class="actions"><button id="copy-operations">複製 JSON</button><button id="clear-operations">清除</button></div></div><p class="hint">只在啟用後記錄。每個 API 會保留 request body、status、耗時與 response body，可判斷成功或失敗；token、headers、Cookie、密碼與其他敏感欄位會遮罩。</p><pre id="operations"></pre></section>
         </div>
       </div>
     </main>
