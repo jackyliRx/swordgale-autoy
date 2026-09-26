@@ -5,6 +5,7 @@ let activeId = accounts[0]?.id || null;
 const runtimes = new Map();
 const maxConcurrentApiRequests = 4;
 const apiRequestTimeoutMs = 30000;
+const cooldownClockToleranceMs = 250;
 let activeApiRequests = 0;
 const apiRequestQueue = [];
 const $ = (id) => document.getElementById(id);
@@ -767,9 +768,10 @@ async function rest(c, accountId) {
 async function hunt(c, accountId) {
   const state = runtimeFor(accountId);
   const party = selectedParty(accountId);
-  if (Date.now() < state.cooldownAt) {
-    debug(accountId, "hunt.cooldown", { cooldownAt: new Date(state.cooldownAt).toISOString(), waitMs: state.cooldownAt - Date.now() });
-    return schedule(state.cooldownAt - Date.now(), accountId);
+  const cooldownWaitMs = state.cooldownAt - Date.now();
+  if (cooldownWaitMs > cooldownClockToleranceMs) {
+    debug(accountId, "hunt.cooldown", { cooldownAt: new Date(state.cooldownAt).toISOString(), waitMs: cooldownWaitMs });
+    return schedule(cooldownWaitMs - cooldownClockToleranceMs, accountId);
   }
   if (!partyVitalsValid(party)) throw new Error("出戰角色 HP／SP 或行動狀態無效，已停止");
   if (party.some((hero) => Number(hero.actionState) !== 0 || hero.perished || hero.hp <= 0)) throw new Error("出戰隊伍尚未全員空閒且存活；禁止開始狩獵");
