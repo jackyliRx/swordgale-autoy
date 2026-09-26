@@ -852,7 +852,13 @@ function startRunner(accountId) {
   }, 30000);
   renderAccounts(); log("開始此帳號自動狩獵；先檢查出戰名單與目前行動", accountId); turn(accountId);
 }
-function stopAll() { for (const account of accounts) stopRunner(account.id); }
+function stopAll() {
+  const runningAccounts = accounts.filter((account) => runtimeFor(account.id).running);
+  if (!runningAccounts.length) { warn("目前沒有運行中的帳號"); return; }
+  if (!window.confirm(`確定停止全部 ${runningAccounts.length} 個運行中的帳號嗎？`)) return;
+  for (const account of runningAccounts) stopRunner(account.id, "已由停止全部帳號結束");
+  log(`已停止全部 ${runningAccounts.length} 個運行中的帳號`);
+}
 async function copyText(text, successMessage, accountId = activeId) {
   try {
     if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
