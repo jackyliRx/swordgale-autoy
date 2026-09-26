@@ -12,7 +12,7 @@
       <div class="workspace">
         <aside class="card sidebar" id="hero-panel">
           <div class="heading"><h2>角色</h2><span id="party-summary" class="badge">尚未讀取</span></div>
-          <p class="hint">以遊戲目前勾選的出戰角色為準；畫面會每 15 秒自動更新。</p>
+          <p class="hint">以遊戲目前勾選的出戰角色為準；只在手動讀取、啟動、動作回應與完成時間到時更新。</p>
           <div id="heroes" class="heroes"></div>
         </aside>
         <div class="content">
@@ -23,26 +23,28 @@
           </section>
           <section class="card" id="automation-card" hidden>
         <div class="heading"><h2 id="active-label"></h2><span id="run-state" class="badge">已停止</span></div>
-        <div class="settings">
-          <label>目標樓層<input id="target-stage" type="number" min="1" value="1" /></label>
-          <label>HP 目標 %<input id="hp-target" type="number" min="1" max="100" value="80" /></label>
-          <label>體力 SP 目標 %<input id="sp-target" type="number" min="1" max="100" value="70" /></label>
-          <label>休息最小分鐘<input id="rest-minutes" type="number" min="0.1" step="0.1" value="1" /></label>
-          <label>無動作提醒分鐘<input id="alert-minutes" type="number" min="1" step="1" value="3" /></label>
-          <label class="checkbox-setting"><input id="flow-messages" type="checkbox" checked /> 啟用流程訊息</label>
-          <label class="checkbox-setting"><input id="operation-log" type="checkbox" /> 啟用操作紀錄</label>
-          <label class="checkbox-setting"><input id="debug-console" type="checkbox" /> Console 除錯紀錄</label>
-        </div>
         <div class="actions"><button id="refresh">重新讀取</button><button id="start" class="primary">啟動此帳號</button><button id="stop" class="danger">停止此帳號</button><button id="stop-all" class="danger">停止全部帳號</button></div>
-        <p class="hint">停止後不會背景重新讀取；可在遊戲調整出戰角色後按「重新讀取」，或直接啟動，Autoy 會先讀取最新名單再判斷。取消「啟用流程訊息」會停止新增一般流程文字；「啟用操作紀錄」會記錄 request／response；Console 保留額外除錯細節。三者都不會輸出 token。</p>
+        <div class="actions utility-actions"><button id="open-settings">設定</button><button id="open-reports">戰報</button><button id="open-flow">流程訊息</button><button id="open-operations">操作紀錄</button></div>
+        <p class="hint">停止後不會背景重新讀取；可按「重新讀取」或直接啟動，Autoy 會先讀取最新名單再判斷。</p>
         <p id="alert" class="alert" hidden></p>
         <div id="death-actions"></div>
           </section>
-          <section class="card" id="flow-card"><div class="heading"><h2>流程訊息</h2><div class="actions"><button id="copy-events">複製訊息</button><button id="clear-events">清除</button></div></div><pre id="events"></pre></section>
-          <section class="card" id="operation-card" hidden><div class="heading"><h2>操作紀錄</h2><div class="actions"><button id="copy-operations">複製 JSON</button><button id="clear-operations">清除</button></div></div><p class="hint">只在啟用後記錄。每個 API 會保留 request body、status、耗時與 response body，可判斷成功或失敗；token、headers、Cookie、密碼與其他敏感欄位會遮罩。</p><pre id="operations"></pre></section>
         </div>
       </div>
     </main>
+    <dialog id="settings-dialog"><div class="dialog-heading"><h2>自動狩獵設定</h2><button data-close-dialog>關閉</button></div><div class="settings">
+      <label>目標樓層<input id="target-stage" type="number" min="1" value="1" /></label>
+      <label>HP 目標 %<input id="hp-target" type="number" min="1" max="100" value="80" /></label>
+      <label>體力 SP 目標 %<input id="sp-target" type="number" min="1" max="100" value="70" /></label>
+      <label>休息最小分鐘<input id="rest-minutes" type="number" min="0.1" step="0.1" value="1" /></label>
+      <label>無動作提醒分鐘<input id="alert-minutes" type="number" min="1" step="1" value="3" /></label>
+      <label class="checkbox-setting"><input id="flow-messages" type="checkbox" checked /> 啟用流程訊息</label>
+      <label class="checkbox-setting"><input id="operation-log" type="checkbox" /> 啟用操作紀錄</label>
+      <label class="checkbox-setting"><input id="debug-console" type="checkbox" /> Console 除錯紀錄</label>
+    </div><p class="hint">流程訊息、操作紀錄與 Console 除錯均為此帳號個別設定。停止後不會背景讀取。</p></dialog>
+    <dialog id="flow-card"><div class="dialog-heading"><h2>流程訊息</h2><div class="actions"><button id="copy-events">複製訊息</button><button id="clear-events">清除</button><button data-close-dialog>關閉</button></div></div><pre id="events"></pre></dialog>
+    <dialog id="operation-card"><div class="dialog-heading"><h2>操作紀錄</h2><div class="actions"><button id="copy-operations">複製 JSON</button><button id="clear-operations">清除</button><button data-close-dialog>關閉</button></div></div><p class="hint">只在啟用後記錄 request／response；token、headers、Cookie 與密碼會遮罩。</p><pre id="operations"></pre></dialog>
+    <dialog id="reports-dialog"><div class="dialog-heading"><h2>狩獵戰報</h2><div class="actions"><button id="refresh-reports">讀取戰報</button><button data-close-dialog>關閉</button></div></div><p class="hint">只在按下「讀取戰報」時請求列表；點選戰報後才讀取單筆詳情並在遊戲端標記已閱。</p><div class="report-layout"><div id="report-list" class="report-list">尚未讀取戰報。</div><article id="report-detail" class="report-detail">請從左側選擇一筆戰報。</article></div></dialog>
     <script src="./app.js"></script>
   </body>
 </html>

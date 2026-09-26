@@ -7,7 +7,7 @@ const $ = (id) => document.getElementById(id);
 const safe = (text) => String(text).replace(/[<>&]/g, (c) => ({"<":"&lt;",">":"&gt;","&":"&amp;"})[c]);
 const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
-  if (!runtimes.has(id)) runtimes.set(id, { heroes: [], messages: [], operations: [], timer: null, refreshPromise: null, running: false, cooldownAt: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
+  if (!runtimes.has(id)) runtimes.set(id, { heroes: [], messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, cooldownAt: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
   return runtimes.get(id);
 }
 for (const account of accounts) runtimeFor(account.id);
@@ -55,16 +55,49 @@ function operationRequestBody(body) {
 function renderOperations(accountId = activeId) {
   const account = accounts.find((entry) => entry.id === accountId);
   const state = runtimeFor(accountId);
-  $("operation-card").hidden = !account || account.settings?.operationLog !== true;
-  if (!account || account.settings?.operationLog !== true) return;
-  $("operations").textContent = state.operations.length ? JSON.stringify(state.operations, null, 2) : "尚未記錄操作。啟用後的下一個讀取或自動流程會出現在此處。";
+  $("operations").textContent = !account ? "尚未選擇帳號。" : account.settings?.operationLog !== true ? "此帳號未啟用操作紀錄。請至設定勾選後再記錄新的操作。" : state.operations.length ? JSON.stringify(state.operations, null, 2) : "尚未記錄操作。啟用後的下一個讀取或自動流程會出現在此處。";
 }
 function renderFlowMessages(accountId = activeId) {
   const account = accounts.find((entry) => entry.id === accountId);
   const state = runtimeFor(accountId);
-  $("flow-card").hidden = !account || account.settings?.flowMessages === false;
-  if (!account || account.settings?.flowMessages === false) return;
-  $("events").textContent = state.messages.map((entry) => `[${entry.time}] ${entry.text}`).join("\n") || "尚無流程訊息。";
+  $("events").textContent = !account ? "尚未選擇帳號。" : account.settings?.flowMessages === false ? "此帳號未啟用流程訊息。請至設定勾選後再記錄新的訊息。" : state.messages.map((entry) => `[${entry.time}] ${entry.text}`).join("\n") || "尚無流程訊息。";
+}
+function formatReportTime(value) { const time = Date.parse(value || ""); return Number.isFinite(time) ? new Date(time).toLocaleString() : "時間未知"; }
+function reportSummary(report) {
+  const messages = Array.isArray(report?.messages) ? report.messages : [];
+  const allies = Array.isArray(report?.a) ? report.a : [];
+  const enemies = Array.isArray(report?.b) ? report.b : [];
+  const allyDeaths = allies.filter((hero) => messages.some((entry) => entry?.m?.includes(`${hero.name}被擊殺死亡`))).map((hero) => hero.name);
+  const enemyDeaths = enemies.filter((hero) => messages.some((entry) => entry?.m?.includes(`${hero.name}被擊殺死亡`))).map((hero) => hero.name);
+  const dealt = messages.filter((entry) => entry?.dmged === "b").map((entry) => Number((entry.m || "").match(/造成\s*(\d+)\s*傷害/)?.[1]) || 0).reduce((sum, value) => sum + value, 0);
+  const received = messages.filter((entry) => entry?.dmged === "a").map((entry) => Number((entry.m || "").match(/造成\s*(\d+)\s*傷害/)?.[1]) || 0).reduce((sum, value) => sum + value, 0);
+  return { allies: allies.length, enemies: enemies.length, allyDeaths, enemyDeaths, dealt, received, critical: messages.filter((entry) => entry?.crucial === true || entry?.s === "critical").length };
+}
+function renderReports(accountId = activeId) {
+  const state = runtimeFor(accountId);
+  const reports = state.reports || [];
+  $("report-list").innerHTML = reports.length ? reports.map((report) => `<button class="report-row ${Number(report.dead) > 0 ? "dead" : ""} ${String(state.currentReport?.id) === String(report.id) ? "active" : ""}" data-report-id="${encodeURIComponent(report.id)}"><strong>${safe(report.zoneName || "未知地區")} ${Number(report.stage) || 0} 層</strong><small>${safe(formatReportTime(report.time))} · ${Number(report.dead) > 0 ? `死亡 ${Number(report.dead)}` : "無死亡"}</small></button>`).join("") : "尚未讀取戰報。";
+  document.querySelectorAll("[data-report-id]").forEach((button) => button.onclick = () => openReport(button.dataset.reportId, accountId).catch((error) => warn(`讀取戰報失敗：${error.message || error}`, accountId)));
+  const report = state.currentReport;
+  if (!report) { $("report-detail").textContent = "請從左側選擇一筆戰報。"; return; }
+  const summary = reportSummary(report);
+  const messages = (report.messages || []).map((entry) => `<li class="${safe(entry.s || "")}">${safe(entry.m || "")}</li>`).join("") || "<li>沒有戰報訊息。</li>";
+  $("report-detail").innerHTML = `<h3>${safe(report.zone || "未知地區")} ${Number(report.stage) || 0} 層</h3><p class="hint">${safe(formatReportTime(report.time))}</p><div class="report-summary">我方 ${summary.allies} 人、敵方 ${summary.enemies} 人；造成傷害 ${summary.dealt}、承受傷害 ${summary.received}；關鍵事件 ${summary.critical} 次。<br>敵方擊殺：${summary.enemyDeaths.length ? safe(summary.enemyDeaths.join("、")) : "無"}。我方死亡：${summary.allyDeaths.length ? safe(summary.allyDeaths.join("、")) : "無"}。</div><h4>戰鬥過程</h4><ol class="report-messages">${messages}</ol>`;
+}
+async function loadReports(accountId = activeId) {
+  const state = runtimeFor(accountId);
+  const result = await request("/reports?type=hunt", {}, accountId);
+  state.reports = Array.isArray(result.reports) ? result.reports : [];
+  state.currentReport = null;
+  renderReports(accountId);
+  log(`已讀取 ${state.reports.length} 筆狩獵戰報列表`, accountId);
+}
+async function openReport(reportId, accountId = activeId) {
+  if (!reportId) return;
+  await request(`/reports/${encodeURIComponent(reportId)}/view`, { method: "POST" }, accountId);
+  const result = await request(`/reports/${encodeURIComponent(reportId)}`, {}, accountId);
+  runtimeFor(accountId).currentReport = result.report || null;
+  renderReports(accountId);
 }
 function debug(accountId, event, details = {}) {
   const account = accounts.find((entry) => entry.id === accountId);
@@ -217,15 +250,34 @@ function renderAccounts() {
 function renderHeroes(accountId = activeId) {
   const state = runtimeFor(accountId);
   if (accountId !== activeId) return;
-  $("heroes").innerHTML = state.heroes.map((hero) => {
+  const heroes = state.heroes.map((hero, index) => ({ hero, index }));
+  const selectedOrder = heroes.filter(({ hero }) => hero.selected === true).sort((a, b) => {
+    const aPosition = Number(a.hero.position);
+    const bPosition = Number(b.hero.position);
+    const aHasPosition = Number.isFinite(aPosition);
+    const bHasPosition = Number.isFinite(bPosition);
+    if (aHasPosition && bHasPosition && aPosition !== bPosition) return aPosition - bPosition;
+    return a.index - b.index;
+  });
+  const rankById = new Map(selectedOrder.map(({ hero }, index) => [String(hero.id), index + 1]));
+  const orderedHeroes = [...selectedOrder.map(({ hero }) => hero), ...heroes.filter(({ hero }) => hero.selected !== true).map(({ hero }) => hero)];
+  const meter = (label, current, maximum, color) => {
+    const value = Number(current);
+    const cap = Number(maximum);
+    const percent = Number.isFinite(value) && Number.isFinite(cap) && cap > 0 ? Math.max(0, Math.min(100, value / cap * 100)) : 0;
+    const text = `${Number.isFinite(value) ? value : "-"}/${Number.isFinite(cap) ? cap : "-"}`;
+    return `<div class="hero-meter ${color}"><div class="hero-meter-label"><span>${label}</span><span>${text}</span></div><div class="hero-meter-track" role="meter" aria-label="${label}" aria-valuemin="0" aria-valuemax="${Number.isFinite(cap) && cap > 0 ? cap : 100}" aria-valuenow="${Number.isFinite(value) ? value : 0}"><span style="width:${percent}%"></span></div></div>`;
+  };
+  $("heroes").innerHTML = orderedHeroes.map((hero) => {
     const recovery = deathState(hero);
     const reviving = recovery === "death" && Number(hero.actionState) === 3;
     const moving = Number(hero.actionState) === 1;
     const resting = Number(hero.actionState) === 2;
     const status = recovery === "final-death" ? "死透了：需要轉生後復活" : reviving ? `重生中，完成時間 ${formatTime(hero.actionCompleteTime)}` : recovery === "death" ? "死亡：需要重生／復活" : moving ? `移動中，完成時間 ${formatTime(hero.actionCompleteTime)}` : resting ? `休息中，完成時間 ${formatTime(hero.actionCompleteTime)}${hero.canComplete === true ? "（可完成）" : ""}` : Number(hero.actionState) === 0 ? "空閒" : `狀態 ${hero.actionState}`;
-    const duty = hero.selected === true ? "出戰" : hero.selected === false ? "未勾選出戰" : "出戰狀態未知";
+    const rank = rankById.get(String(hero.id));
+    const duty = rank ? `出戰 ${rank}` : hero.selected === false ? "未勾選出戰" : "出戰狀態未知";
     const recoveryLink = recovery ? `<a class="recovery-link" href="https://myteam.swordgale.online/heroes/${encodeURIComponent(hero.id)}" target="_blank" rel="noopener noreferrer">前往遊戲手動復原</a>` : "";
-    return `<article class="hero ${recovery ? "hero-dead" : ""}"><strong>${safe(hero.name)}</strong><p>${duty} · 樓層 ${hero.huntStage ?? "-"} · ${safe(hero.zoneName || "-")}</p><p>HP ${hero.hp}/${hero.fullHp} · SP ${hero.sp}/${hero.fullSp}</p><p>${status}</p>${recoveryLink}</article>`;
+    return `<article class="hero ${recovery ? "hero-dead" : ""} ${rank ? "hero-selected" : ""}"><div class="hero-heading"><strong>${safe(hero.name)}</strong><span class="hero-duty ${rank ? "selected" : ""}">${duty}</span></div><p>${safe(hero.zoneName || "-")} · ${hero.huntStage ?? "-"} 層</p><div class="hero-meters">${meter("HP", hero.hp, hero.fullHp, "hp")}${meter("體力", hero.sp, hero.fullSp, "sp")}${meter("經驗", hero.exp, hero.fullExp, "exp")}</div><p>${status}</p>${recoveryLink}</article>`;
   }).join("");
   const party = state.heroes.filter((hero) => hero.selected === true);
   const deaths = party.filter((hero) => deathState(hero) === "death");
@@ -285,8 +337,8 @@ function render() {
   const account = active();
   $("automation-card").hidden = !account;
   $("hero-panel").hidden = !account;
-  if (account) { $("active-label").textContent = account.label; loadSettings(account); renderHeroes(account.id); renderFlowMessages(account.id); renderOperations(account.id); setState(null, account.id); }
-  else { $("heroes").innerHTML = ""; $("death-actions").innerHTML = ""; $("party-summary").textContent = ""; $("flow-card").hidden = true; $("operation-card").hidden = true; }
+  if (account) { $("active-label").textContent = account.label; loadSettings(account); renderHeroes(account.id); renderFlowMessages(account.id); renderOperations(account.id); renderReports(account.id); setState(null, account.id); }
+  else { $("heroes").innerHTML = ""; $("death-actions").innerHTML = ""; $("party-summary").textContent = ""; renderFlowMessages(); renderOperations(); renderReports(); }
 }
 function setState(message, accountId = activeId) {
   if (accountId !== activeId) return;
@@ -325,6 +377,36 @@ function scheduleDeathRecovery(accountId, heroes, reason) {
   log(`${reason}；依伺服器完成時間等待約 ${Math.ceil(wait / 1000)} 秒後重查`, accountId);
   schedule(wait, accountId);
 }
+function recoveryWaitAt(heroes) {
+  return Math.max(...heroes.map((hero) => Date.parse(hero.actionCompleteTime || 0) || 0), 0);
+}
+async function restSurvivorsDuringRevival(accountId) {
+  const state = runtimeFor(accountId);
+  const survivors = selectedParty(accountId).filter((hero) => !deathState(hero));
+  if (!survivors.length) return false;
+  const resting = survivors.filter((hero) => Number(hero.actionState) === 2);
+  if (resting.length === survivors.length) return true;
+  if (survivors.some((hero) => Number(hero.actionState) !== 0)) throw new Error("Recovery survivor has an unrecognized action");
+  const result = await request("/heroes/restAll", { method: "POST" }, accountId);
+  state.heroes = mergeHeroes(state.heroes, result.heroes || result.huntInfo?.heroes);
+  state.canForward = result.canForward ?? result.huntInfo?.canForward ?? state.canForward;
+  if (accountId === activeId) renderHeroes(accountId);
+  log(`死亡復原期間：已讓 ${survivors.length} 名存活出戰角色開始全部休息`, accountId);
+  return true;
+}
+async function completeSurvivorRestAfterRevival(accountId) {
+  const state = runtimeFor(accountId);
+  const resting = selectedParty(accountId).filter((hero) => Number(hero.actionState) === 2);
+  if (!resting.length) return false;
+  if (!resting.every((hero) => hero.canComplete === true)) return false;
+  const result = await request("/heroes/restAll/complete", { method: "POST" }, accountId);
+  state.heroes = mergeHeroes(state.heroes, result.heroes || result.huntInfo?.heroes);
+  state.canForward = result.canForward ?? result.huntInfo?.canForward ?? state.canForward;
+  state.restUntil = 0;
+  if (accountId === activeId) renderHeroes(accountId);
+  log(`死亡復原期間：已完成 ${resting.length} 名存活出戰角色的全部休息`, accountId);
+  return true;
+}
 async function continueDeathRecovery(accountId) {
   const state = runtimeFor(accountId);
   let party = selectedParty(accountId);
@@ -353,8 +435,18 @@ async function continueDeathRecovery(accountId) {
     if (reviving.length && reviving.length !== accountDeaths.length) throw new Error("帳號內死亡角色重生狀態不一致；不重複送出全部重生，請重新檢查角色");
     if (reviving.length) {
       if (!accountDeaths.every((hero) => Number(hero.actionState) === 3)) throw new Error("帳號內死亡角色重生狀態不一致；不呼叫批次完成端點，請重新檢查角色");
-      if (!accountDeaths.every((hero) => hero.canComplete === true)) {
-        scheduleDeathRecovery(accountId, accountDeaths, "一般死亡角色正在重生");
+      await restSurvivorsDuringRevival(accountId);
+      party = selectedParty(accountId);
+      const survivors = party.filter((hero) => !deathState(hero));
+      const restingSurvivors = survivors.filter((hero) => Number(hero.actionState) === 2);
+      const allRevivesReady = accountDeaths.every((hero) => hero.canComplete === true);
+      const allRestsReady = !restingSurvivors.length || restingSurvivors.every((hero) => hero.canComplete === true);
+      if (!allRevivesReady || !allRestsReady) {
+        const waiting = [...accountDeaths, ...restingSurvivors];
+        const dueAt = recoveryWaitAt(waiting);
+        const wait = dueAt > Date.now() ? dueAt - Date.now() + 2000 : 30000;
+        log(`重生與存活隊員休息進行中；依最晚完成時間等待約 ${Math.ceil(wait / 1000)} 秒後繼續`, accountId);
+        schedule(wait, accountId);
         return true;
       }
       const result = await request("/heroes/reviveAll/complete", { method: "POST" }, accountId);
@@ -362,6 +454,7 @@ async function continueDeathRecovery(accountId) {
       await refreshAccount(accountId);
       const stillDead = selectedParty(accountId).filter((hero) => deathState(hero) === "death");
       if (stillDead.length) throw new Error(`批次完成重生後仍有 ${stillDead.length} 名出戰角色死亡；停止以避免重複完成`);
+      await completeSurvivorRestAfterRevival(accountId);
       log(`已完成全部重生（${ordinaryDeaths.length} 名出戰角色），重新檢查 HP／SP`, accountId);
     } else {
       if (accountDeaths.some((hero) => Number(hero.actionState) !== 0)) throw new Error("帳號內一般死亡角色有無法辨識的行動狀態；停止自動重生");
@@ -451,7 +544,7 @@ async function beginHuntMoveToGrassland(accountId) {
   const result = await request("/move/1", { method: "POST" }, accountId);
   state.heroes = mergeHeroes(state.heroes, result.heroes);
   state.huntMovePhase = "to-grassland";
-  await refreshAccount(accountId);
+  await refreshAccount(accountId, { quiet: true });
   const party = selectedParty(accountId);
   if (!party.length || !party.every((hero) => Number(hero.actionState) === 1)) throw new Error("前往大草原請求後，出戰隊伍未進入移動狀態；已停止避免重複送出");
   log("自動狩獵：已從初始之鎮開始前往大草原", accountId);
@@ -735,6 +828,10 @@ async function copyText(text, successMessage) {
     warn(`複製失敗：${error.message || error}`, activeId);
   }
 }
+function openDialog(id) {
+  const dialog = $(id);
+  if (dialog && !dialog.open) dialog.showModal();
+}
 function initAccountEvents() {
   $("account-form").onsubmit = (event) => {
     event.preventDefault();
@@ -754,6 +851,12 @@ function initAccountEvents() {
   $("copy-events").onclick = () => copyText($("events").textContent, "流程訊息已複製");
   $("clear-operations").onclick = () => { const state = runtimeFor(activeId); state.operations = []; renderOperations(activeId); };
   $("copy-operations").onclick = () => copyText(JSON.stringify(runtimeFor(activeId).operations, null, 2), "操作紀錄 JSON 已複製");
+  $("open-settings").onclick = () => openDialog("settings-dialog");
+  $("open-flow").onclick = () => { renderFlowMessages(activeId); openDialog("flow-card"); };
+  $("open-operations").onclick = () => { renderOperations(activeId); openDialog("operation-card"); };
+  $("open-reports").onclick = () => { renderReports(activeId); openDialog("reports-dialog"); };
+  $("refresh-reports").onclick = () => loadReports(activeId).catch((error) => warn(`讀取戰報列表失敗：${error.message || error}`, activeId));
+  document.querySelectorAll("[data-close-dialog]").forEach((button) => button.onclick = () => button.closest("dialog")?.close());
   for (const id of ["target-stage", "hp-target", "sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console"]) $(id).addEventListener("change", () => {
     persistSettings();
     if (id === "flow-messages" && $("flow-messages").checked) log("已啟用流程訊息", activeId);
@@ -765,9 +868,5 @@ function init() {
   initAccountEvents();
   if (active()) loadSettings();
   render();
-  setInterval(() => {
-    if (document.hidden || !activeId || !runtimeFor(activeId).running) return;
-    refreshAccount(activeId, { quiet: true }).catch((error) => log(`自動重新讀取失敗：${error.message || error}`, activeId));
-  }, 15000);
 }
 init();
