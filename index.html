@@ -23,8 +23,21 @@
           </section>
           <section class="card" id="automation-card" hidden>
         <div class="heading"><h2 id="active-label"></h2><span id="run-state" class="badge">已停止</span></div>
-        <div class="actions"><button id="refresh">重新讀取</button><button id="start" class="primary">啟動此帳號</button><button id="stop" class="danger">停止此帳號</button><button id="stop-all" class="danger">停止全部帳號</button></div>
-        <div class="actions utility-actions"><button id="open-settings">設定</button><button id="open-reports">戰報</button><button id="open-flow">流程訊息</button><button id="open-operations">操作紀錄</button></div>
+        <div class="automation-controls">
+          <div class="control-group"><span class="control-label">目前帳號</span><div class="actions"><button id="refresh">重新讀取</button><button id="start" class="primary">啟動</button><button id="stop" class="danger">停止</button></div></div>
+          <div class="control-group control-group-global"><span class="control-label">全部帳號</span><div class="actions"><button id="stop-all" class="danger">停止全部</button></div></div>
+        </div>
+        <section class="automation-settings" aria-label="自動狩獵設定">
+          <h3>自動狩獵設定</h3>
+          <div class="settings">
+            <label>目標樓層<input id="target-stage" type="number" min="1" value="1" /></label>
+            <label>HP 目標 %<input id="hp-target" type="number" min="1" max="100" value="80" /></label>
+            <label>體力 SP 目標 %<input id="sp-target" type="number" min="1" max="100" value="70" /></label>
+            <label>休息最小分鐘<input id="rest-minutes" type="number" min="0.1" step="0.1" value="1" /></label>
+            <label>無動作提醒分鐘<input id="alert-minutes" type="number" min="1" step="1" value="3" /></label>
+          </div>
+        </section>
+        <div class="actions utility-actions"><button id="open-reports">戰報</button><button id="open-flow">流程訊息</button><button id="open-operations">操作紀錄</button></div>
         <p class="hint">停止後不會背景重新讀取；可按「重新讀取」或直接啟動，Autoy 會先讀取最新名單再判斷。</p>
         <p id="alert" class="alert" hidden></p>
         <div id="death-actions"></div>
@@ -32,18 +45,8 @@
         </div>
       </div>
     </main>
-    <dialog id="settings-dialog"><div class="dialog-heading"><h2>自動狩獵設定</h2><button data-close-dialog>關閉</button></div><div class="settings">
-      <label>目標樓層<input id="target-stage" type="number" min="1" value="1" /></label>
-      <label>HP 目標 %<input id="hp-target" type="number" min="1" max="100" value="80" /></label>
-      <label>體力 SP 目標 %<input id="sp-target" type="number" min="1" max="100" value="70" /></label>
-      <label>休息最小分鐘<input id="rest-minutes" type="number" min="0.1" step="0.1" value="1" /></label>
-      <label>無動作提醒分鐘<input id="alert-minutes" type="number" min="1" step="1" value="3" /></label>
-      <label class="checkbox-setting"><input id="flow-messages" type="checkbox" checked /> 啟用流程訊息</label>
-      <label class="checkbox-setting"><input id="operation-log" type="checkbox" /> 啟用操作紀錄</label>
-      <label class="checkbox-setting"><input id="debug-console" type="checkbox" /> Console 除錯紀錄</label>
-    </div><p class="hint">流程訊息、操作紀錄與 Console 除錯均為此帳號個別設定。停止後不會背景讀取。</p></dialog>
-    <dialog id="flow-card"><div class="dialog-heading"><h2>流程訊息</h2><div class="actions"><button id="copy-events">複製訊息</button><button id="clear-events">清除</button><button data-close-dialog>關閉</button></div></div><pre id="events"></pre></dialog>
-    <dialog id="operation-card"><div class="dialog-heading"><h2>操作紀錄</h2><div class="actions"><button id="copy-operations">複製 JSON</button><button id="clear-operations">清除</button><button data-close-dialog>關閉</button></div></div><p class="hint">只在啟用後記錄 request／response；token、headers、Cookie 與密碼會遮罩。</p><pre id="operations"></pre></dialog>
+    <dialog id="flow-card"><div class="dialog-heading"><h2>流程訊息</h2><div class="actions"><label class="checkbox-setting"><input id="flow-messages" type="checkbox" checked /> 啟用流程訊息</label><button id="copy-events">複製訊息</button><button id="clear-events">清除</button><button data-close-dialog>關閉</button></div></div><pre id="events"></pre></dialog>
+    <dialog id="operation-card"><div class="dialog-heading"><h2>操作紀錄</h2><div class="actions"><label class="checkbox-setting"><input id="operation-log" type="checkbox" /> 啟用操作紀錄</label><label class="checkbox-setting"><input id="debug-console" type="checkbox" /> Console 除錯</label><button id="copy-operations">複製 JSON</button><button id="clear-operations">清除</button><button data-close-dialog>關閉</button></div></div><p class="hint">只在啟用後記錄 request／response；token、headers、Cookie 與密碼會遮罩。</p><pre id="operations"></pre></dialog>
     <dialog id="reports-dialog"><div class="dialog-heading"><h2>狩獵戰報</h2><div class="actions"><button id="refresh-reports">讀取戰報</button><button data-close-dialog>關閉</button></div></div><p class="hint">只在按下「讀取戰報」時請求列表；點選戰報後才讀取單筆詳情並在遊戲端標記已閱。</p><div class="report-layout"><div id="report-list" class="report-list">尚未讀取戰報。</div><article id="report-detail" class="report-detail">請從左側選擇一筆戰報。</article></div></dialog>
     <script src="./app.js"></script>
   </body>

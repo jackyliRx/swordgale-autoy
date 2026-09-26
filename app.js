@@ -3,12 +3,41 @@ const storeKey = "autoy.accounts.v1";
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let activeId = accounts[0]?.id || null;
 const runtimes = new Map();
+const maxConcurrentApiRequests = 4;
+const apiRequestTimeoutMs = 30000;
+let activeApiRequests = 0;
+const apiRequestQueue = [];
 const $ = (id) => document.getElementById(id);
 const safe = (text) => String(text).replace(/[<>&]/g, (c) => ({"<":"&lt;",">":"&gt;","&":"&amp;"})[c]);
 const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
   if (!runtimes.has(id)) runtimes.set(id, { heroes: [], messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, cooldownAt: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
   return runtimes.get(id);
+}
+function drainApiRequestQueue() {
+  while (activeApiRequests < maxConcurrentApiRequests && apiRequestQueue.length) {
+    const next = apiRequestQueue.shift();
+    activeApiRequests += 1;
+    Promise.resolve().then(next.task).then(next.resolve, next.reject).finally(() => {
+      activeApiRequests -= 1;
+      drainApiRequestQueue();
+    });
+  }
+}
+function queueApiRequest(task) {
+  return new Promise((resolve, reject) => {
+    apiRequestQueue.push({ task, resolve, reject });
+    drainApiRequestQueue();
+  });
+}
+async function fetchApi(url, options, controller) {
+  let timedOut = false;
+  const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, apiRequestTimeoutMs);
+  try { return await fetch(url, options); }
+  catch (error) {
+    if (timedOut) throw new Error(`API 請求超過 ${apiRequestTimeoutMs / 1000} 秒未回應`);
+    throw error;
+  } finally { clearTimeout(timeout); }
 }
 for (const account of accounts) runtimeFor(account.id);
 function save() { localStorage.setItem(storeKey, JSON.stringify(accounts)); }
@@ -55,12 +84,12 @@ function operationRequestBody(body) {
 function renderOperations(accountId = activeId) {
   const account = accounts.find((entry) => entry.id === accountId);
   const state = runtimeFor(accountId);
-  $("operations").textContent = !account ? "尚未選擇帳號。" : account.settings?.operationLog !== true ? "此帳號未啟用操作紀錄。請至設定勾選後再記錄新的操作。" : state.operations.length ? JSON.stringify(state.operations, null, 2) : "尚未記錄操作。啟用後的下一個讀取或自動流程會出現在此處。";
+  $("operations").textContent = !account ? "尚未選擇帳號。" : account.settings?.operationLog !== true ? "此帳號未啟用操作紀錄。請在此視窗勾選後再記錄新的操作。" : state.operations.length ? JSON.stringify(state.operations, null, 2) : "尚未記錄操作。啟用後的下一個讀取或自動流程會出現在此處。";
 }
 function renderFlowMessages(accountId = activeId) {
   const account = accounts.find((entry) => entry.id === accountId);
   const state = runtimeFor(accountId);
-  $("events").textContent = !account ? "尚未選擇帳號。" : account.settings?.flowMessages === false ? "此帳號未啟用流程訊息。請至設定勾選後再記錄新的訊息。" : state.messages.map((entry) => `[${entry.time}] ${entry.text}`).join("\n") || "尚無流程訊息。";
+  $("events").textContent = !account ? "尚未選擇帳號。" : account.settings?.flowMessages === false ? "此帳號未啟用流程訊息。請在此視窗勾選後再記錄新的訊息。" : state.messages.map((entry) => `[${entry.time}] ${entry.text}`).join("\n") || "尚無流程訊息。";
 }
 function formatReportTime(value) { const time = Date.parse(value || ""); return Number.isFinite(time) ? new Date(time).toLocaleString() : "時間未知"; }
 function reportSummary(report) {
@@ -175,7 +204,11 @@ async function request(path, options = {}, accountId = activeId) {
   try {
     operation(accountId, "api.request", { requestId, method, path, requestBody });
     debug(accountId, "api.request", { method, path });
-    const response = await fetch(`${API}${path}`, { ...options, signal: controller.signal, headers: { token: account.token, ...(options.headers || {}) } });
+    if (activeApiRequests >= maxConcurrentApiRequests) {
+      operation(accountId, "api.queued", { requestId, method, path, queuedAhead: apiRequestQueue.length });
+      debug(accountId, "api.queued", { method, path, queuedAhead: apiRequestQueue.length });
+    }
+    const response = await queueApiRequest(() => fetchApi(`${API}${path}`, { ...options, signal: controller.signal, headers: { token: account.token, ...(options.headers || {}) } }, controller));
     if (!response.ok) {
       const errorText = await response.text();
       operation(accountId, "api.failure", { requestId, method, path, requestBody, status: response.status, durationMs: Date.now() - startedAt, responseBody: operationRequestBody(errorText) });
@@ -226,7 +259,7 @@ async function refreshAccount(accountId = activeId, { quiet = false } = {}) {
 function renderAccounts() {
   $("accounts").innerHTML = accounts.map((account) => {
     const state = runtimeFor(account.id);
-    return `<div class="account ${account.id === activeId ? "active" : ""}"><button data-select="${account.id}">${safe(account.label)}</button><small>${state.running ? "自動狩獵中" : "已停止"} · token 已設定</small><button data-run="${account.id}" class="${state.running ? "danger" : "primary"}">${state.running ? "停止此帳號" : "啟動此帳號"}</button><button data-delete="${account.id}">移除</button></div>`;
+    return `<div class="account ${account.id === activeId ? "active" : ""}"><button data-select="${account.id}">${safe(account.label)}</button><small>${state.running ? "自動狩獵中" : "已停止"} · token 已設定</small><button data-run="${account.id}" class="${state.running ? "danger" : "primary"}">${state.running ? "停止此帳號" : "啟動此帳號"}</button><button data-copy-token="${account.id}">複製 TOKEN</button><button data-delete="${account.id}">移除</button></div>`;
   }).join("");
   document.querySelectorAll("[data-select]").forEach((button) => button.onclick = () => {
     activeId = button.dataset.select;
@@ -236,6 +269,11 @@ function renderAccounts() {
   document.querySelectorAll("[data-run]").forEach((button) => button.onclick = () => {
     const id = button.dataset.run;
     runtimeFor(id).running ? stopRunner(id) : startRunner(id);
+  });
+  document.querySelectorAll("[data-copy-token]").forEach((button) => button.onclick = () => {
+    const id = button.dataset.copyToken;
+    const account = accounts.find((entry) => entry.id === id);
+    if (account) copyText(account.token, `${account.label} 的 TOKEN 已複製`, id);
   });
   document.querySelectorAll("[data-delete]").forEach((button) => button.onclick = () => {
     const id = button.dataset.delete;
@@ -273,7 +311,10 @@ function renderHeroes(accountId = activeId) {
     const reviving = recovery === "death" && Number(hero.actionState) === 3;
     const moving = Number(hero.actionState) === 1;
     const resting = Number(hero.actionState) === 2;
-    const status = recovery === "final-death" ? "死透了：需要轉生後復活" : reviving ? `重生中，完成時間 ${formatTime(hero.actionCompleteTime)}` : recovery === "death" ? "死亡：需要重生／復活" : moving ? `移動中，完成時間 ${formatTime(hero.actionCompleteTime)}` : resting ? `休息中，完成時間 ${formatTime(hero.actionCompleteTime)}${hero.canComplete === true ? "（可完成）" : ""}` : Number(hero.actionState) === 0 ? "空閒" : `狀態 ${hero.actionState}`;
+    const actionCode = Number(hero.actionState);
+    const actionTarget = hero.actionTarget === null || hero.actionTarget === undefined ? "" : `，目標 ${hero.actionTarget}`;
+    const actionComplete = hero.actionCompleteTime ? `，完成時間 ${formatTime(hero.actionCompleteTime)}` : "";
+    const status = recovery === "final-death" ? "死透了：需要轉生後復活" : reviving ? `重生中，完成時間 ${formatTime(hero.actionCompleteTime)}` : recovery === "death" ? "死亡：需要重生／復活" : moving ? `移動中，完成時間 ${formatTime(hero.actionCompleteTime)}` : resting ? `休息中，完成時間 ${formatTime(hero.actionCompleteTime)}${hero.canComplete === true ? "（可完成）" : ""}` : actionCode === 0 ? "空閒" : `其他遊戲行動中（狀態 ${actionCode}${actionTarget}${actionComplete}）`;
     const rank = rankById.get(String(hero.id));
     const duty = rank ? `出戰 ${rank}` : hero.selected === false ? "未勾選出戰" : "出戰狀態未知";
     const recoveryLink = recovery ? `<a class="recovery-link" href="https://myteam.swordgale.online/heroes/${encodeURIComponent(hero.id)}" target="_blank" rel="noopener noreferrer">前往遊戲手動復原</a>` : "";
@@ -812,7 +853,7 @@ function startRunner(accountId) {
   renderAccounts(); log("開始此帳號自動狩獵；先檢查出戰名單與目前行動", accountId); turn(accountId);
 }
 function stopAll() { for (const account of accounts) stopRunner(account.id); }
-async function copyText(text, successMessage) {
+async function copyText(text, successMessage, accountId = activeId) {
   try {
     if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
     else {
@@ -823,9 +864,9 @@ async function copyText(text, successMessage) {
       textarea.remove();
       if (!copied) throw new Error("瀏覽器拒絕複製");
     }
-    log(successMessage, activeId);
+    log(successMessage, accountId);
   } catch (error) {
-    warn(`複製失敗：${error.message || error}`, activeId);
+    warn(`複製失敗：${error.message || error}`, accountId);
   }
 }
 function openDialog(id) {
@@ -851,7 +892,6 @@ function initAccountEvents() {
   $("copy-events").onclick = () => copyText($("events").textContent, "流程訊息已複製");
   $("clear-operations").onclick = () => { const state = runtimeFor(activeId); state.operations = []; renderOperations(activeId); };
   $("copy-operations").onclick = () => copyText(JSON.stringify(runtimeFor(activeId).operations, null, 2), "操作紀錄 JSON 已複製");
-  $("open-settings").onclick = () => openDialog("settings-dialog");
   $("open-flow").onclick = () => { renderFlowMessages(activeId); openDialog("flow-card"); };
   $("open-operations").onclick = () => { renderOperations(activeId); openDialog("operation-card"); };
   $("open-reports").onclick = () => { renderReports(activeId); openDialog("reports-dialog"); };
