@@ -1,20 +1,27 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.6.1";
+const uiVersion = "0.6.3";
 const storeKey = "autoy.accounts.v1";
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let activeId = accounts[0]?.id || null;
 const runtimes = new Map();
 const maxConcurrentApiRequests = 4;
 const apiRequestTimeoutMs = 30000;
-const cooldownClockToleranceMs = 250;
+const clockSkewProbeMs = 1000;
 let activeApiRequests = 0;
 const apiRequestQueue = [];
 const $ = (id) => document.getElementById(id);
 const safe = (text) => String(text).replace(/[<>&]/g, (c) => ({"<":"&lt;",">":"&gt;","&":"&amp;"})[c]);
 const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
-  if (!runtimes.has(id)) runtimes.set(id, { heroes: [], messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, cooldownAt: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
+  if (!runtimes.has(id)) runtimes.set(id, { heroes: [], messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
   return runtimes.get(id);
+}
+function localCooldownAt(value, state) {
+  const serverCooldownAt = Date.parse(value || "");
+  if (!Number.isFinite(serverCooldownAt)) return 0;
+  const difference = serverCooldownAt - Date.now();
+  if (Math.abs(difference) <= clockSkewProbeMs) state.serverClockOffsetMs = difference;
+  return serverCooldownAt - state.serverClockOffsetMs;
 }
 function drainApiRequestQueue() {
   while (activeApiRequests < maxConcurrentApiRequests && apiRequestQueue.length) {
@@ -247,7 +254,7 @@ async function refreshAccount(accountId = activeId, { quiet = false } = {}) {
     const huntInfo = await request("/huntInfo", {}, accountId);
     state.heroes = heroData.heroes || [];
     state.canForward = huntInfo.canForward ?? null;
-    state.cooldownAt = Date.parse(huntInfo.huntAvailableAt || 0) || 0;
+    state.cooldownAt = localCooldownAt(huntInfo.huntAvailableAt, state);
     debug(accountId, "state.refreshed", { party: partyDebug(state.heroes.filter((hero) => hero.selected === true)), huntZone: huntInfo.huntZone, huntStage: huntInfo.huntStage, canForward: state.canForward, cooldownAt: huntInfo.huntAvailableAt || null });
     if (accountId === activeId) {
       renderHeroes(accountId);
@@ -711,7 +718,7 @@ async function returnToStart(accountId) {
     state.heroes = mergeHeroes(state.heroes, result.heroes); state.canForward = result.canForward ?? state.canForward;
     await refresh(accountId);
     const info = await request("/huntInfo", {}, accountId);
-    state.canForward = info.canForward ?? state.canForward; state.cooldownAt = Date.parse(info.huntAvailableAt || 0) || state.cooldownAt;
+    state.canForward = info.canForward ?? state.canForward; state.cooldownAt = localCooldownAt(info.huntAvailableAt, state) || state.cooldownAt;
     const position = state.heroes.find((hero) => hero.selected)?.zoneName || result.zoneName || "位置未知";
     log(`已執行回程／返回起點；最新區域：${position}`, accountId);
     if (!stopForDeaths(accountId)) warn(`回程完成；位置：${position}。自動狩獵維持停止。`, accountId);
@@ -726,7 +733,7 @@ async function completeMovement(accountId) {
     await refresh(accountId);
     const info = await request("/huntInfo", {}, accountId);
     state.canForward = info.canForward ?? result.canForward ?? state.canForward;
-    state.cooldownAt = Date.parse(info.huntAvailableAt || 0) || state.cooldownAt;
+    state.cooldownAt = localCooldownAt(info.huntAvailableAt, state) || state.cooldownAt;
     log(`移動已完成，目前位置：${info.zoneName || result.zoneName || "未知"}`, accountId);
     if (!stopForDeaths(accountId)) warn(`移動已完成，位置：${info.zoneName || result.zoneName || "未知"}。狩獵維持停止。`, accountId);
   } catch (error) { warn(`完成移動結果未確認，請重新讀取：${error.message || error}`, accountId); }
@@ -769,11 +776,6 @@ async function rest(c, accountId) {
 async function hunt(c, accountId) {
   const state = runtimeFor(accountId);
   const party = selectedParty(accountId);
-  const cooldownWaitMs = state.cooldownAt - Date.now();
-  if (cooldownWaitMs > cooldownClockToleranceMs) {
-    debug(accountId, "hunt.cooldown", { cooldownAt: new Date(state.cooldownAt).toISOString(), waitMs: cooldownWaitMs });
-    return schedule(cooldownWaitMs - cooldownClockToleranceMs, accountId);
-  }
   if (!partyVitalsValid(party)) throw new Error("出戰角色 HP／SP 或行動狀態無效，已停止");
   if (party.some((hero) => Number(hero.actionState) !== 0 || hero.perished || hero.hp <= 0)) throw new Error("出戰隊伍尚未全員空閒且存活；禁止開始狩獵");
   if (needsRest(c, accountId)) throw new Error("出戰角色未達 HP／SP 目標；禁止開始狩獵");
@@ -784,6 +786,11 @@ async function hunt(c, accountId) {
     return;
   }
   if (!atGrassland) throw new Error("出戰隊伍不在已驗證的狩獵地圖或位置不一致；請重新讀取確認");
+  const cooldownWaitMs = state.cooldownAt - Date.now();
+  if (cooldownWaitMs > 0) {
+    debug(accountId, "hunt.cooldown", { cooldownAt: new Date(state.cooldownAt).toISOString(), waitMs: cooldownWaitMs });
+    return schedule(cooldownWaitMs, accountId);
+  }
   const current = Number(party[0]?.huntStage);
   if (!Number.isInteger(current)) throw new Error("找不到出戰隊伍目前樓層");
   if (current > c.target) throw new Error("目前樓層已超過目標，未啟用自動後退");
@@ -794,7 +801,7 @@ async function hunt(c, accountId) {
   const updates = result.huntInfo?.heroes || [];
   state.heroes = mergeHeroes(state.heroes, updates);
   state.canForward = result.huntInfo?.canForward ?? state.canForward;
-  state.cooldownAt = Date.parse(result.huntInfo?.huntAvailableAt || 0) || 0;
+  state.cooldownAt = localCooldownAt(result.huntInfo?.huntAvailableAt, state);
   if (accountId === activeId) renderHeroes(accountId);
   log(forward ? "前行狩獵完成" : "原地狩獵完成", accountId);
   schedule(Math.max(1000, state.cooldownAt - Date.now()), accountId);
