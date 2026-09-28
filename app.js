@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.7";
+const uiVersion = "0.7.8";
 const storeKey = "autoy.accounts.v1";
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let activeId = accounts[0]?.id || null;
@@ -15,7 +15,7 @@ const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
   if (!runtimes.has(id)) {
     const account = accounts.find((entry) => entry.id === id);
-    runtimes.set(id, { heroes: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemRecoveryActive: false, messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
+    runtimes.set(id, { heroes: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
   }
   return runtimes.get(id);
 }
@@ -727,10 +727,12 @@ function configuredRecoveryItem(hero, c, accountId) {
   const own = c.heroItems?.[String(hero.id)] || {};
   const team = c.teamItems || {};
   const kinds = recoveryKinds(hero, c);
-  for (const kind of kinds) {
-    const ownId = own[kind];
-    const ownItem = ownId ? itemById(ownId, accountId) : null;
-    if (ownItem && itemQuantity(ownItem) > 0) return { item: ownItem, source: "hero", kind };
+  if (!runtimeFor(accountId).recoveryFallbackHeroes.has(String(hero.id))) {
+    for (const kind of kinds) {
+      const ownId = own[kind];
+      const ownItem = ownId ? itemById(ownId, accountId) : null;
+      if (ownItem && itemQuantity(ownItem) > 0) return { item: ownItem, source: "hero", kind };
+    }
   }
   for (const kind of kinds) {
     const teamId = team[kind];
@@ -785,12 +787,21 @@ async function tryUseRecoveryItems(c, accountId) {
       await refreshItems(accountId);
       afterItem = itemById(choice.item.id, accountId);
       afterQuantity = afterItem ? itemQuantity(afterItem) : 0;
-      if (afterQuantity >= before.quantity) { log(`${hero.name} 使用 ${choice.item.name} 後庫存未減少；重新讀取背包後仍未扣除，已自動進入休息`, accountId); return false; }
+      if (afterQuantity >= before.quantity) {
+        if (choice.source === "hero") {
+          state.recoveryFallbackHeroes.add(String(hero.id));
+          const fallback = configuredRecoveryItem(hero, c, accountId);
+          if (fallback?.source === "team") { log(`${hero.name} 使用 ${choice.item.name} 未確認，下一輪改用全隊預設補品 ${fallback.item.name}`, accountId); return true; }
+          state.recoveryFallbackHeroes.delete(String(hero.id));
+        }
+        log(`${hero.name} 使用 ${choice.item.name} 後庫存未減少；重新讀取背包後仍未扣除，已自動進入休息`, accountId); return false;
+      }
     }
     if (Number(updatedHero.hp) <= before.hp && Number(updatedHero.sp) <= before.sp) { log(`${hero.name} 使用 ${choice.item.name} 後 HP／SP 未增加，已自動進入休息`, accountId); return false; }
     operation(accountId, "item.used", { heroId: hero.id, heroName: hero.name, itemId: choice.item.id, itemName: choice.item.name, source: choice.source, fallback: choice.fallback === true, before, after: { hp: updatedHero.hp, sp: updatedHero.sp, quantity: afterQuantity } });
     const fallbackText = choice.fallback ? "；指定補品不可用，已改用全隊預設" : choice.source === "team" ? "；使用全隊預設" : "";
     log(`${hero.name} 使用 ${choice.item.name} × 1${fallbackText}`, accountId);
+    state.recoveryFallbackHeroes.delete(String(hero.id));
     used = true;
   }
   if (accountId === activeId) { renderHeroes(accountId); renderItemSettings(accountId); }
@@ -932,7 +943,7 @@ async function rest(c, accountId) {
       await rest(c, accountId);
       return;
     }
-    state.itemRecoveryActive = false;
+    state.itemRecoveryActive = false; state.recoveryFallbackHeroes.clear();
     if (accountId === activeId) renderHeroes(accountId);
     log(`已完成休息，全隊達到 HP ${c.restHp}%／SP ${c.restSp}%`, accountId); schedule(1000, accountId); return;
   }
@@ -1014,7 +1025,7 @@ async function turn(accountId) {
     if (party.some((hero) => Number(hero.actionState) !== 0)) throw new Error("勾選出戰隊伍有移動或未識別行動；請先完成並重新讀取");
     if (needsRest(c, accountId)) state.itemRecoveryActive = true;
     if (state.itemRecoveryActive && restComplete(c, accountId)) {
-      state.itemRecoveryActive = false;
+      state.itemRecoveryActive = false; state.recoveryFallbackHeroes.clear();
       log(`補品恢復完成，全隊達到 HP ${c.restHp}%／SP ${c.restSp}%`, accountId);
     }
     if (state.itemRecoveryActive) {
@@ -1038,7 +1049,7 @@ function startRunner(accountId) {
   if (state.running || state.actionBusy) return;
   const c = config(accountId);
   if (!validConfig(c)) { warn("請先設定有效的狩獵目標與 HP／SP 門檻", accountId); return; }
-  state.running = true; state.restUntil = 0;
+  state.running = true; state.restUntil = 0; state.recoveryFallbackHeroes.clear();
   operation(accountId, "runner.started", { version: uiVersion, targetStage: c.target, hpTarget: c.hp, spTarget: c.sp });
   debug(accountId, "runner.started", { config: c });
   if (accountId === activeId) { $("alert").hidden = true; document.title = "Autoy"; setState(null, accountId); }
