@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.6";
+const uiVersion = "0.7.7";
 const storeKey = "autoy.accounts.v1";
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let activeId = accounts[0]?.id || null;
@@ -779,9 +779,14 @@ async function tryUseRecoveryItems(c, accountId) {
     const updatedHero = result.hero;
     if (!updatedHero) { log(`${hero.name} 使用 ${choice.item.name} 後未回傳角色資料，已自動進入休息`, accountId); return false; }
     state.heroes = mergeHeroes(state.heroes, [updatedHero]);
-    const afterItem = itemById(choice.item.id, accountId);
-    const afterQuantity = afterItem ? itemQuantity(afterItem) : 0;
-    if (afterQuantity >= before.quantity) { log(`${hero.name} 使用 ${choice.item.name} 後庫存未減少，已自動進入休息`, accountId); return false; }
+    let afterItem = itemById(choice.item.id, accountId);
+    let afterQuantity = afterItem ? itemQuantity(afterItem) : 0;
+    if (afterQuantity >= before.quantity) {
+      await refreshItems(accountId);
+      afterItem = itemById(choice.item.id, accountId);
+      afterQuantity = afterItem ? itemQuantity(afterItem) : 0;
+      if (afterQuantity >= before.quantity) { log(`${hero.name} 使用 ${choice.item.name} 後庫存未減少；重新讀取背包後仍未扣除，已自動進入休息`, accountId); return false; }
+    }
     if (Number(updatedHero.hp) <= before.hp && Number(updatedHero.sp) <= before.sp) { log(`${hero.name} 使用 ${choice.item.name} 後 HP／SP 未增加，已自動進入休息`, accountId); return false; }
     operation(accountId, "item.used", { heroId: hero.id, heroName: hero.name, itemId: choice.item.id, itemName: choice.item.name, source: choice.source, fallback: choice.fallback === true, before, after: { hp: updatedHero.hp, sp: updatedHero.sp, quantity: afterQuantity } });
     const fallbackText = choice.fallback ? "；指定補品不可用，已改用全隊預設" : choice.source === "team" ? "；使用全隊預設" : "";
