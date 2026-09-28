@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.6.3";
+const uiVersion = "0.7.1";
 const storeKey = "autoy.accounts.v1";
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let activeId = accounts[0]?.id || null;
@@ -13,7 +13,7 @@ const $ = (id) => document.getElementById(id);
 const safe = (text) => String(text).replace(/[<>&]/g, (c) => ({"<":"&lt;",">":"&gt;","&":"&amp;"})[c]);
 const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
-  if (!runtimes.has(id)) runtimes.set(id, { heroes: [], messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
+  if (!runtimes.has(id)) runtimes.set(id, { heroes: [], items: [], itemsUpdatedAt: 0, itemRecoveryActive: false, messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
   return runtimes.get(id);
 }
 function localCooldownAt(value, state) {
@@ -152,22 +152,25 @@ function partyDebug(party) {
 }
 function config(accountId = activeId) {
   const account = accounts.find((a) => a.id === accountId);
-  if (account?.settings) return { target: Number(account.settings.target), hp: Number(account.settings.hp), sp: Number(account.settings.sp), restMinutes: Number(account.settings.restMinutes), alertMinutes: Number(account.settings.alertMinutes), flowMessages: account.settings.flowMessages !== false, operationLog: account.settings.operationLog === true, debug: account.settings.debug === true };
-  return { target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked };
+  if (account?.settings) { const settings = { ...defaultSettings(), ...account.settings }; return { target: Number(settings.target), hp: Number(settings.hp), sp: Number(settings.sp), restHp: Number(settings.restHp), restSp: Number(settings.restSp), useItems: settings.useItems === true, teamItems: settings.teamItems || {}, heroItems: settings.heroItems || {}, restMinutes: Number(settings.restMinutes), alertMinutes: Number(settings.alertMinutes), flowMessages: settings.flowMessages !== false, operationLog: settings.operationLog === true, debug: settings.debug === true }; }
+  return { target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, teamItems: {}, heroItems: {}, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked };
 }
-function validConfig(c) { return Number.isInteger(c.target) && c.target > 0 && c.hp >= 1 && c.hp <= 100 && c.sp >= 1 && c.sp <= 100 && c.restMinutes > 0 && c.alertMinutes >= 1; }
-function defaultSettings() { return { target: 1, hp: 80, sp: 70, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false }; }
+function validConfig(c) { return Number.isInteger(c.target) && c.target > 0 && c.hp >= 1 && c.hp <= 100 && c.sp >= 1 && c.sp <= 100 && c.restHp >= c.hp && c.restHp <= 100 && c.restSp >= c.sp && c.restSp <= 100 && c.restMinutes > 0 && c.alertMinutes >= 1; }
+function defaultSettings() { return { target: 1, hp: 80, sp: 70, restHp: 90, restSp: 90, useItems: false, teamItems: {}, heroItems: {}, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false }; }
 function loadSettings(account = active()) {
   if (!account) return;
   account.settings = { ...defaultSettings(), ...(account.settings || {}) };
   $("target-stage").value = account.settings.target;
   $("hp-target").value = account.settings.hp;
   $("sp-target").value = account.settings.sp;
+  $("rest-hp-target").value = account.settings.restHp;
+  $("rest-sp-target").value = account.settings.restSp;
   $("rest-minutes").value = account.settings.restMinutes;
   $("alert-minutes").value = account.settings.alertMinutes;
   $("flow-messages").checked = account.settings.flowMessages !== false;
   $("operation-log").checked = account.settings.operationLog === true;
   $("debug-console").checked = account.settings.debug === true;
+  renderItemSettings(account.id);
 }
 function persistSettings() {
   const account = active();
@@ -175,7 +178,10 @@ function persistSettings() {
   account.settings = configFromForm();
   save();
 }
-function configFromForm() { return { target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked }; }
+function configFromForm() {
+  const previous = active()?.settings || defaultSettings();
+  return { ...previous, target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked };
+}
 function clearRecoveryTimers(accountId) {
   const state = runtimeFor(accountId);
   for (const entry of state.recoveryTimers.values()) clearTimeout(entry.timer);
@@ -246,6 +252,63 @@ async function refresh(accountId = activeId) {
   if (accountId === activeId) { renderHeroes(accountId); log(`已讀取 ${state.heroes.length} 張角色卡`, accountId); }
   return state.heroes;
 }
+function itemQuantity(item) {
+  const quantity = Number(item?.quantity);
+  if (Number.isFinite(quantity)) return quantity;
+  return item?.available === true ? 1 : 0;
+}
+function isSafeRecoveryItem(item) {
+  const heals = Number(item?.healHp) > 0 || Number(item?.healSp) > 0;
+  const effects = Array.isArray(item?.effectTexts) ? item.effectTexts.length > 0 : Boolean(String(item?.effectTexts || "").trim());
+  return item && item.target === "hero" && item.available !== false && heals && !effects && !item.effectDurationSec;
+}
+function recoveryItems(accountId = activeId) { return runtimeFor(accountId).items.filter(isSafeRecoveryItem); }
+function itemById(itemId, accountId = activeId) { return recoveryItems(accountId).find((item) => String(item.id) === String(itemId)); }
+function itemLabel(item) {
+  if (!item) return "未設定";
+  const heals = [Number(item.healHp) > 0 ? `HP +${item.healHp}` : "", Number(item.healSp) > 0 ? `SP +${item.healSp}` : ""].filter(Boolean).join("、");
+  return `${item.name}（${heals}，庫存 ${itemQuantity(item)}）`;
+}
+async function refreshItems(accountId = activeId) {
+  const state = runtimeFor(accountId);
+  const result = await request("/items", {}, accountId);
+  state.items = Array.isArray(result.items) ? result.items : [];
+  state.itemsUpdatedAt = Date.now();
+  if (accountId === activeId) renderItemSettings(accountId);
+  return state.items;
+}
+function itemSelect(name, value, accountId) {
+  const options = [`<option value="">未設定</option>`].concat(recoveryItems(accountId).map((item) => `<option value="${safe(item.id)}" ${String(value || "") === String(item.id) ? "selected" : ""}>${safe(itemLabel(item))}</option>`));
+  return `<select data-item-setting="${safe(name)}">${options.join("")}</select>`;
+}
+function renderItemSettings(accountId = activeId) {
+  const panel = $("item-settings");
+  if (!panel) return;
+  const account = accounts.find((entry) => entry.id === accountId);
+  const state = runtimeFor(accountId);
+  if (!account || accountId !== activeId) return;
+  const settings = { ...defaultSettings(), ...(account.settings || {}) };
+  const hasItems = state.itemsUpdatedAt > 0;
+  const inventoryHint = hasItems ? `${recoveryItems(accountId).length} 種可用恢復補品；上次讀取 ${new Date(state.itemsUpdatedAt).toLocaleTimeString()}` : "尚未讀取背包";
+  const team = settings.teamItems || {};
+  const heroes = state.heroes || [];
+  panel.innerHTML = `<div class="item-settings-heading"><div><h3>補品設定</h3><p class="hint">${safe(inventoryHint)}。能力增益、裝備、礦物與材料不會出現在選單。</p></div><button id="refresh-items" type="button">讀取補品</button></div>
+    <label class="checkbox-setting item-enable"><input id="use-items" type="checkbox" ${settings.useItems === true ? "checked" : ""} /> 使用補品；未勾選時維持休息流程</label>
+    <div class="item-grid"><div><strong>全隊預設</strong><label>HP 補品${itemSelect("team.hp", team.hp, accountId)}</label><label>SP 補品${itemSelect("team.sp", team.sp, accountId)}</label><label>雙恢復補品${itemSelect("team.both", team.both, accountId)}</label></div>
+    <div class="item-hero-settings"><strong>角色指定（未指定或用完時改用全隊預設）</strong>${heroes.length ? heroes.map((hero) => { const own = settings.heroItems?.[String(hero.id)] || {}; return `<div class="item-hero-row"><span>${safe(hero.name)}${hero.selected === true ? "（出戰）" : ""}</span><label>HP${itemSelect(`hero.${hero.id}.hp`, own.hp, accountId)}</label><label>SP${itemSelect(`hero.${hero.id}.sp`, own.sp, accountId)}</label><label>雙恢復${itemSelect(`hero.${hero.id}.both`, own.both, accountId)}</label></div>`; }).join("") : "<p class=\"hint\">請先讀取帳號角色。</p>"}</div></div>`;
+  $("refresh-items").onclick = () => refreshItems(accountId).then(() => log("已讀取背包補品", accountId)).catch((error) => warn(`讀取補品失敗：${error.message || error}`, accountId));
+  $("use-items").onchange = () => { persistSettings(); renderItemSettings(accountId); };
+  panel.querySelectorAll("[data-item-setting]").forEach((select) => select.onchange = () => {
+    const key = select.dataset.itemSetting.split(".");
+    account.settings = { ...defaultSettings(), ...(account.settings || {}) };
+    if (key[0] === "team") account.settings.teamItems = { ...(account.settings.teamItems || {}), [key[1]]: select.value || "" };
+    else {
+      const heroId = key[1]; const kind = key[2];
+      account.settings.heroItems = { ...(account.settings.heroItems || {}), [heroId]: { ...(account.settings.heroItems || {})[heroId], [kind]: select.value || "" } };
+    }
+    save();
+  });
+}
 async function refreshAccount(accountId = activeId, { quiet = false } = {}) {
   const state = runtimeFor(accountId);
   if (state.refreshPromise) return state.refreshPromise;
@@ -258,6 +321,7 @@ async function refreshAccount(accountId = activeId, { quiet = false } = {}) {
     debug(accountId, "state.refreshed", { party: partyDebug(state.heroes.filter((hero) => hero.selected === true)), huntZone: huntInfo.huntZone, huntStage: huntInfo.huntStage, canForward: state.canForward, cooldownAt: huntInfo.huntAvailableAt || null });
     if (accountId === activeId) {
       renderHeroes(accountId);
+      renderItemSettings(accountId);
       const count = state.heroes.filter((hero) => hero.selected === true).length;
       if (!quiet) log(`已載入帳號狀態：${state.heroes.length} 張角色卡，勾選出戰 ${count} 名；${huntInfo.zoneName || "位置未知"} ${huntInfo.huntStage ?? "?"} 層`, accountId);
     }
@@ -631,6 +695,77 @@ function partyVitalsValid(party) {
 }
 function pct(current, max) { return max > 0 ? current / max * 100 : 0; }
 function needsRest(c, accountId) { return selectedParty(accountId).some((hero) => pct(hero.hp, hero.fullHp) < c.hp || pct(hero.sp, hero.fullSp) < c.sp); }
+function restComplete(c, accountId) { return selectedParty(accountId).every((hero) => pct(hero.hp, hero.fullHp) >= c.restHp && pct(hero.sp, hero.fullSp) >= c.restSp); }
+function recoveryKinds(hero, c) {
+  const lowHp = pct(hero.hp, hero.fullHp) < c.restHp;
+  const lowSp = pct(hero.sp, hero.fullSp) < c.restSp;
+  if (lowHp && lowSp) return ["both", "hp", "sp"];
+  if (lowHp) return ["hp", "both"];
+  if (lowSp) return ["sp", "both"];
+  return [];
+}
+function configuredRecoveryItem(hero, c, accountId) {
+  const own = c.heroItems?.[String(hero.id)] || {};
+  const team = c.teamItems || {};
+  for (const kind of recoveryKinds(hero, c)) {
+    const ownId = own[kind];
+    const teamId = team[kind];
+    const ownItem = ownId ? itemById(ownId, accountId) : null;
+    if (ownItem && itemQuantity(ownItem) > 0) return { item: ownItem, source: "hero", kind };
+    const teamItem = teamId ? itemById(teamId, accountId) : null;
+    if (teamItem && itemQuantity(teamItem) > 0) return { item: teamItem, source: "team", kind, fallback: Boolean(ownId) };
+  }
+  return null;
+}
+function recoveryNeedText(hero, c) {
+  const parts = [];
+  if (pct(hero.hp, hero.fullHp) < c.restHp) parts.push(`HP ${Math.floor(pct(hero.hp, hero.fullHp))}%`);
+  if (pct(hero.sp, hero.fullSp) < c.restSp) parts.push(`SP ${Math.floor(pct(hero.sp, hero.fullSp))}%`);
+  return parts.join("／");
+}
+function recoveryUnavailableReason(hero, c, accountId) {
+  const own = c.heroItems?.[String(hero.id)] || {};
+  const team = c.teamItems || {};
+  const ids = recoveryKinds(hero, c).flatMap((kind) => [own[kind], team[kind]]).filter(Boolean);
+  if (!ids.length) return "未設定適用補品";
+  const allItems = runtimeFor(accountId).items;
+  if (ids.some((id) => allItems.some((item) => String(item.id) === String(id) && !isSafeRecoveryItem(item)))) return "設定補品不符合安全規則";
+  if (ids.some((id) => allItems.some((item) => String(item.id) === String(id) && itemQuantity(item) <= 0))) return "適用補品已用完";
+  return "沒有可用補品";
+}
+async function tryUseRecoveryItems(c, accountId) {
+  if (!c.useItems || !runtimeFor(accountId).itemRecoveryActive || restComplete(c, accountId)) return false;
+  const state = runtimeFor(accountId);
+  if (!state.itemsUpdatedAt || Date.now() - state.itemsUpdatedAt > 15000) await refreshItems(accountId);
+  let used = false;
+  for (const hero of selectedParty(accountId)) {
+    if (!recoveryKinds(hero, c).length) continue;
+    const choice = configuredRecoveryItem(hero, c, accountId);
+    if (!choice) {
+      log(`${hero.name} ${recoveryNeedText(hero, c)}，${recoveryUnavailableReason(hero, c, accountId)}，已自動進入休息`, accountId);
+      return false;
+    }
+    const before = { hp: hero.hp, sp: hero.sp, quantity: itemQuantity(choice.item) };
+    let result;
+    try { result = await request(`/items/${encodeURIComponent(choice.item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity: 1, heroId: hero.id }) }, accountId); }
+    catch (error) { log(`${hero.name} 使用 ${choice.item.name} 失敗，已自動進入休息：${error.message || error}`, accountId); return false; }
+    if (!Array.isArray(result.items)) { log(`${hero.name} 使用 ${choice.item.name} 後未回傳背包資料，已自動進入休息`, accountId); return false; }
+    state.items = result.items; state.itemsUpdatedAt = Date.now();
+    const updatedHero = result.hero;
+    if (!updatedHero) { log(`${hero.name} 使用 ${choice.item.name} 後未回傳角色資料，已自動進入休息`, accountId); return false; }
+    state.heroes = mergeHeroes(state.heroes, [updatedHero]);
+    const afterItem = itemById(choice.item.id, accountId);
+    const afterQuantity = afterItem ? itemQuantity(afterItem) : 0;
+    if (afterQuantity >= before.quantity) { log(`${hero.name} 使用 ${choice.item.name} 後庫存未減少，已自動進入休息`, accountId); return false; }
+    if (Number(updatedHero.hp) <= before.hp && Number(updatedHero.sp) <= before.sp) { log(`${hero.name} 使用 ${choice.item.name} 後 HP／SP 未增加，已自動進入休息`, accountId); return false; }
+    operation(accountId, "item.used", { heroId: hero.id, heroName: hero.name, itemId: choice.item.id, itemName: choice.item.name, source: choice.source, fallback: choice.fallback === true, before, after: { hp: updatedHero.hp, sp: updatedHero.sp, quantity: afterQuantity } });
+    const fallbackText = choice.fallback ? "；指定補品不可用，已改用全隊預設" : choice.source === "team" ? "；使用全隊預設" : "";
+    log(`${hero.name} 使用 ${choice.item.name} × 1${fallbackText}`, accountId);
+    used = true;
+  }
+  if (accountId === activeId) { renderHeroes(accountId); renderItemSettings(accountId); }
+  return used;
+}
 function schedule(ms, accountId) {
   const state = runtimeFor(accountId);
   clearTimeout(state.timer);
@@ -760,8 +895,16 @@ async function rest(c, accountId) {
     const result = await request("/heroes/restAll/complete", { method: "POST" }, accountId);
     state.heroes = mergeHeroes(state.heroes, result.huntInfo?.heroes);
     state.canForward = result.huntInfo?.canForward ?? state.canForward; state.restUntil = 0;
+    await refreshAccount(accountId, { quiet: true });
+    if (!restComplete(c, accountId)) {
+      const summary = selectedParty(accountId).map((hero) => `${hero.name} HP ${Math.floor(pct(hero.hp, hero.fullHp))}%／SP ${Math.floor(pct(hero.sp, hero.fullSp))}%`).join("；");
+      log(`休息尚未達成 HP ${c.restHp}%／SP ${c.restSp}%：${summary}；繼續休息`, accountId);
+      await rest(c, accountId);
+      return;
+    }
+    state.itemRecoveryActive = false;
     if (accountId === activeId) renderHeroes(accountId);
-    log("已完成全隊休息；下一輪重新檢查 HP／SP", accountId); schedule(1000, accountId); return;
+    log(`已完成休息，全隊達到 HP ${c.restHp}%／SP ${c.restSp}%`, accountId); schedule(1000, accountId); return;
   }
   if (party.some((hero) => Number(hero.actionState) !== 0)) throw new Error("出戰隊伍有未完成的非休息行動；請先完成行動");
   debug(accountId, "rest.start", { party: partyDebug(party), minMinutes: c.restMinutes });
@@ -839,7 +982,20 @@ async function turn(accountId) {
     }
     if (party.some((hero) => Number(hero.actionState) === 2)) { operation(accountId, "runner.branch", { branch: "rest-existing" }); debug(accountId, "runner.branch", { branch: "rest-existing" }); await rest(c, accountId); return; }
     if (party.some((hero) => Number(hero.actionState) !== 0)) throw new Error("勾選出戰隊伍有移動或未識別行動；請先完成並重新讀取");
-    if (needsRest(c, accountId)) { operation(accountId, "runner.branch", { branch: "rest-needed" }); debug(accountId, "runner.branch", { branch: "rest-needed" }); await rest(c, accountId); }
+    if (needsRest(c, accountId)) state.itemRecoveryActive = true;
+    if (state.itemRecoveryActive && restComplete(c, accountId)) {
+      state.itemRecoveryActive = false;
+      log(`補品恢復完成，全隊達到 HP ${c.restHp}%／SP ${c.restSp}%`, accountId);
+    }
+    if (state.itemRecoveryActive) {
+      if (c.useItems) {
+        operation(accountId, "runner.branch", { branch: "item-recovery" });
+        debug(accountId, "runner.branch", { branch: "item-recovery" });
+        const used = await tryUseRecoveryItems(c, accountId);
+        if (used) { schedule(1000, accountId); return; }
+      }
+      operation(accountId, "runner.branch", { branch: "rest-needed" }); debug(accountId, "runner.branch", { branch: "rest-needed" }); await rest(c, accountId);
+    }
     else { operation(accountId, "runner.branch", { branch: "hunt" }); debug(accountId, "runner.branch", { branch: "hunt" }); await hunt(c, accountId); }
   } catch (error) {
     if (error.name !== "AbortError") debug(accountId, "runner.error", { message: error.message || String(error) });
@@ -913,7 +1069,7 @@ function initAccountEvents() {
   $("open-reports").onclick = () => { renderReports(activeId); openDialog("reports-dialog"); };
   $("refresh-reports").onclick = () => loadReports(activeId).catch((error) => warn(`讀取戰報列表失敗：${error.message || error}`, activeId));
   document.querySelectorAll("[data-close-dialog]").forEach((button) => button.onclick = () => button.closest("dialog")?.close());
-  for (const id of ["target-stage", "hp-target", "sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console"]) $(id).addEventListener("change", () => {
+  for (const id of ["target-stage", "hp-target", "sp-target", "rest-hp-target", "rest-sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console"]) $(id).addEventListener("change", () => {
     persistSettings();
     if (id === "flow-messages" && $("flow-messages").checked) log("已啟用流程訊息", activeId);
     if (id === "operation-log" && $("operation-log").checked) operation(activeId, "operation-log.enabled", { message: "使用者啟用操作紀錄" });
