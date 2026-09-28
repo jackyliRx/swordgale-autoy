@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.4";
+const uiVersion = "0.7.5";
 const storeKey = "autoy.accounts.v1";
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let activeId = accounts[0]?.id || null;
@@ -303,11 +303,10 @@ function renderItemSettings(accountId = activeId) {
   const inventoryHint = hasItems ? `${recoveryItems(accountId).length} 種可用恢復補品；上次讀取 ${new Date(state.itemsUpdatedAt).toLocaleTimeString()}` : "尚未讀取背包";
   const team = settings.teamItems || {};
   const heroes = (state.heroes || []).filter((hero) => hero.selected === true);
-  panel.innerHTML = `<div class="item-settings-heading"><div><h3>補品設定</h3><p class="hint">${safe(inventoryHint)}。能力增益、裝備、礦物與材料不會出現在選單。</p></div><button id="refresh-items" type="button">讀取補品</button></div>
+  panel.innerHTML = `<div class="item-settings-heading"><div><h3>補品設定</h3><p class="hint">${safe(inventoryHint)}。能力增益、裝備、礦物與材料不會出現在選單。</p></div></div>
     <label class="checkbox-setting item-enable"><input id="use-items" type="checkbox" ${settings.useItems === true ? "checked" : ""} /> 使用補品；未勾選時維持休息流程</label>
     <div class="item-grid"><div><strong>全隊預設</strong><label>HP 補品${itemSelect("team.hp", team.hp, accountId)}</label><label>SP 補品${itemSelect("team.sp", team.sp, accountId)}</label><label>雙恢復補品${itemSelect("team.both", team.both, accountId)}</label></div>
     <div class="item-hero-settings"><strong>出戰角色指定（未指定或用完時改用全隊預設）</strong>${heroes.length ? heroes.map((hero) => { const own = settings.heroItems?.[String(hero.id)] || {}; return `<div class="item-hero-row"><span>${safe(hero.name)}</span><label>HP${itemSelect(`hero.${hero.id}.hp`, own.hp, accountId)}</label><label>SP${itemSelect(`hero.${hero.id}.sp`, own.sp, accountId)}</label><label>雙恢復${itemSelect(`hero.${hero.id}.both`, own.both, accountId)}</label></div>`; }).join("") : "<p class=\"hint\">目前沒有勾選出戰角色。</p>"}</div></div>`;
-  $("refresh-items").onclick = () => refreshItems(accountId).then(() => log("已讀取背包補品", accountId)).catch((error) => warn(`讀取補品失敗：${error.message || error}`, accountId));
   $("use-items").onchange = () => { persistSettings(); renderItemSettings(accountId); };
   panel.querySelectorAll("[data-item-setting]").forEach((select) => select.onchange = () => {
     const key = select.dataset.itemSetting.split(".");
@@ -1079,7 +1078,7 @@ function initAccountEvents() {
     log("已新增帳號；正在驗證 token", account.id);
     refreshAccount(account.id).catch((error) => warn(`讀取帳號資料失敗：${error.message || error}`, account.id));
   };
-  $("refresh").onclick = () => refreshAccount(activeId).then(() => { if (!stopForDeaths(activeId)) { $("alert").hidden = true; log("角色與狩獵狀態已更新"); } }).catch((error) => log(error.message || String(error)));
+  $("refresh").onclick = () => Promise.all([refreshAccount(activeId, { quiet: true }), refreshItems(activeId)]).then(() => { if (!stopForDeaths(activeId)) { $("alert").hidden = true; log("角色、狩獵狀態與背包補品已更新"); } }).catch((error) => warn(`重新讀取失敗：${error.message || error}`, activeId));
   $("start").onclick = () => startRunner(activeId);
   $("stop").onclick = () => stopRunner(activeId);
   const stopAllButton = $("stop-all"); if (stopAllButton) stopAllButton.onclick = stopAll;
