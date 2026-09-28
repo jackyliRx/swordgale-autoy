@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.5";
+const uiVersion = "0.7.6";
 const storeKey = "autoy.accounts.v1";
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let activeId = accounts[0]?.id || null;
@@ -726,13 +726,16 @@ function recoveryKinds(hero, c) {
 function configuredRecoveryItem(hero, c, accountId) {
   const own = c.heroItems?.[String(hero.id)] || {};
   const team = c.teamItems || {};
-  for (const kind of recoveryKinds(hero, c)) {
+  const kinds = recoveryKinds(hero, c);
+  for (const kind of kinds) {
     const ownId = own[kind];
-    const teamId = team[kind];
     const ownItem = ownId ? itemById(ownId, accountId) : null;
     if (ownItem && itemQuantity(ownItem) > 0) return { item: ownItem, source: "hero", kind };
+  }
+  for (const kind of kinds) {
+    const teamId = team[kind];
     const teamItem = teamId ? itemById(teamId, accountId) : null;
-    if (teamItem && itemQuantity(teamItem) > 0) return { item: teamItem, source: "team", kind, fallback: Boolean(ownId) };
+    if (teamItem && itemQuantity(teamItem) > 0) return { item: teamItem, source: "team", kind, fallback: kinds.some((candidate) => Boolean(own[candidate])) };
   }
   return null;
 }
