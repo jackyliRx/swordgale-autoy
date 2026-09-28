@@ -8,7 +8,7 @@
   </head>
   <body>
     <main class="app-shell">
-      <header><h1>Autoy</h1><p>多角色自動狩獵</p><span class="badge app-version">v0.7.2</span></header>
+      <header><h1>Autoy</h1><p>多角色自動狩獵</p><span class="badge app-version">v0.7.4</span></header>
       <div class="workspace">
         <aside class="card sidebar" id="hero-panel">
           <div class="heading"><h2>角色</h2><span id="party-summary" class="badge">尚未讀取</span></div>
@@ -48,6 +48,6 @@
     <dialog id="flow-card"><div class="dialog-heading"><h2>流程訊息</h2><div class="actions"><label class="checkbox-setting"><input id="flow-messages" type="checkbox" checked /> 啟用流程訊息</label><button id="copy-events">複製訊息</button><button id="clear-events">清除</button><button data-close-dialog>關閉</button></div></div><pre id="events"></pre></dialog>
     <dialog id="operation-card"><div class="dialog-heading"><h2>操作紀錄</h2><div class="actions"><label class="checkbox-setting"><input id="operation-log" type="checkbox" /> 啟用操作紀錄</label><label class="checkbox-setting"><input id="debug-console" type="checkbox" /> Console 除錯</label><button id="copy-operations">複製 JSON</button><button id="clear-operations">清除</button><button data-close-dialog>關閉</button></div></div><p class="hint">只在啟用後記錄 request／response；token、headers、Cookie 與密碼會遮罩。</p><pre id="operations"></pre></dialog>
     <dialog id="reports-dialog"><div class="dialog-heading"><h2>狩獵戰報</h2><div class="actions"><button id="refresh-reports">讀取戰報</button><button data-close-dialog>關閉</button></div></div><p class="hint">只在按下「讀取戰報」時請求列表；點選戰報後才讀取單筆詳情並在遊戲端標記已閱。</p><div class="report-layout"><div id="report-list" class="report-list">尚未讀取戰報。</div><article id="report-detail" class="report-detail">請從左側選擇一筆戰報。</article></div></dialog>
-    <script src="./app.js?v=0.7.2"></script>
+    <script src="./app.js?v=0.7.4"></script>
   </body>
 </html>

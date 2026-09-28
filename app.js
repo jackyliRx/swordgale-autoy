@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.2";
+const uiVersion = "0.7.4";
 const storeKey = "autoy.accounts.v1";
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let activeId = accounts[0]?.id || null;
@@ -13,7 +13,10 @@ const $ = (id) => document.getElementById(id);
 const safe = (text) => String(text).replace(/[<>&]/g, (c) => ({"<":"&lt;",">":"&gt;","&":"&amp;"})[c]);
 const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
-  if (!runtimes.has(id)) runtimes.set(id, { heroes: [], items: [], itemsUpdatedAt: 0, itemRecoveryActive: false, messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
+  if (!runtimes.has(id)) {
+    const account = accounts.find((entry) => entry.id === id);
+    runtimes.set(id, { heroes: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemRecoveryActive: false, messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
+  }
   return runtimes.get(id);
 }
 function localCooldownAt(value, state) {
@@ -262,6 +265,12 @@ function isSafeRecoveryItem(item) {
   const effects = Array.isArray(item?.effectTexts) ? item.effectTexts.length > 0 : Boolean(String(item?.effectTexts || "").trim());
   return item && item.target === "hero" && item.available !== false && heals && !effects && !item.effectDurationSec;
 }
+function normalizeItems(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.items?.items)) return payload.items.items;
+  return null;
+}
 function recoveryItems(accountId = activeId) { return runtimeFor(accountId).items.filter(isSafeRecoveryItem); }
 function itemById(itemId, accountId = activeId) { return recoveryItems(accountId).find((item) => String(item.id) === String(itemId)); }
 function itemLabel(item) {
@@ -272,8 +281,10 @@ function itemLabel(item) {
 async function refreshItems(accountId = activeId) {
   const state = runtimeFor(accountId);
   const result = await request("/items", {}, accountId);
-  state.items = Array.isArray(result.items) ? result.items : [];
+  state.items = normalizeItems(result) || [];
   state.itemsUpdatedAt = Date.now();
+  const account = accounts.find((entry) => entry.id === accountId);
+  if (account) { account.itemCatalog = state.items; account.itemsUpdatedAt = state.itemsUpdatedAt; save(); }
   if (accountId === activeId) renderItemSettings(accountId);
   return state.items;
 }
@@ -338,6 +349,7 @@ function renderAccounts() {
     activeId = button.dataset.select;
     loadSettings(active());
     render();
+    loadAccountSnapshot(activeId);
   });
   document.querySelectorAll("[data-run]").forEach((button) => button.onclick = () => {
     const id = button.dataset.run;
@@ -357,6 +369,14 @@ function renderAccounts() {
     if (activeId === id) { activeId = accounts[0]?.id || null; if (active()) loadSettings(); }
     save(); render();
   });
+}
+async function loadAccountSnapshot(accountId) {
+  try {
+    const data = await request("/heroes", {}, accountId);
+    const state = runtimeFor(accountId);
+    state.heroes = data.heroes || [];
+    if (accountId === activeId) { renderHeroes(accountId); renderItemSettings(accountId); }
+  } catch { /* Keep locally saved item and hero settings visible when offline. */ }
 }
 function renderHeroes(accountId = activeId) {
   const state = runtimeFor(accountId);
@@ -749,8 +769,11 @@ async function tryUseRecoveryItems(c, accountId) {
     let result;
     try { result = await request(`/items/${encodeURIComponent(choice.item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity: 1, heroId: hero.id }) }, accountId); }
     catch (error) { log(`${hero.name} 使用 ${choice.item.name} 失敗，已自動進入休息：${error.message || error}`, accountId); return false; }
-    if (!Array.isArray(result.items)) { log(`${hero.name} 使用 ${choice.item.name} 後未回傳背包資料，已自動進入休息`, accountId); return false; }
-    state.items = result.items; state.itemsUpdatedAt = Date.now();
+    const updatedItems = normalizeItems(result.items);
+    if (!updatedItems) { log(`${hero.name} 使用 ${choice.item.name} 後未回傳可辨識的背包資料，已自動進入休息`, accountId); return false; }
+    state.items = updatedItems; state.itemsUpdatedAt = Date.now();
+    const account = accounts.find((entry) => entry.id === accountId);
+    if (account) { account.itemCatalog = state.items; account.itemsUpdatedAt = state.itemsUpdatedAt; save(); }
     const updatedHero = result.hero;
     if (!updatedHero) { log(`${hero.name} 使用 ${choice.item.name} 後未回傳角色資料，已自動進入休息`, accountId); return false; }
     state.heroes = mergeHeroes(state.heroes, [updatedHero]);
@@ -1080,5 +1103,6 @@ function init() {
   initAccountEvents();
   if (active()) loadSettings();
   render();
+  if (active()) loadAccountSnapshot(activeId);
 }
 init();
