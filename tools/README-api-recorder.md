@@ -12,3 +12,5 @@
 右下角會出現 **Autoy API Recorder**。勾選「啟用紀錄」後再操作遊戲，面板會記錄 fetch／XHR 的 request 與 response。每組事件以相同 `requestId` 配對，包含 method、URL、request body、request headers、HTTP status、response body 和耗時。
 
 可直接複製 JSON 或下載 JSON。最多保留 100 筆事件，並使用瀏覽器 `localStorage` 暫存。token、Authorization、Cookie、密碼、secret、API key 會自動遮罩。
+
+面板右上角的「收合／展開」可隱藏或顯示操作區，收合狀態會保留。可拖曳面板標題列移動位置；按鈕與「啟用紀錄」核取方塊仍維持正常操作，不會觸發拖曳。

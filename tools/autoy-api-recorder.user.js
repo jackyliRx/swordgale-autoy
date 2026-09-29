@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Autoy API Recorder
 // @namespace    https://github.com/jackyliRx/swordgale-autoy
-// @version      1.0.0
+// @version      1.1.0
 // @description  Record Swordgale API request and response pairs for Autoy debugging.
 // @match        https://myteam.swordgale.online/*
 // @run-at       document-start
@@ -15,9 +15,11 @@
   const API_PREFIX = `${location.origin}/api/`;
   const ENABLED_KEY = "autoy.apiRecorder.enabled";
   const LOG_KEY = "autoy.apiRecorder.logs";
+  const COLLAPSED_KEY = "autoy.apiRecorder.collapsed";
   const MAX_LOGS = 100;
   const MAX_TEXT = 30000;
   let enabled = localStorage.getItem(ENABLED_KEY) === "true";
+  let collapsed = localStorage.getItem(COLLAPSED_KEY) === "true";
   let logs = loadLogs();
 
   function loadLogs() {
@@ -120,23 +122,45 @@
     const checkbox = document.querySelector("#autoy-recorder-enabled");
     const count = document.querySelector("#autoy-recorder-count");
     const output = document.querySelector("#autoy-recorder-output");
+    const body = document.querySelector("#autoy-recorder-body");
+    const toggle = document.querySelector("#autoy-recorder-toggle");
     if (checkbox) checkbox.checked = enabled;
     if (count) count.textContent = `已記錄 ${logs.length} 筆事件`;
     if (output) output.textContent = logs.length ? JSON.stringify(logs, null, 2) : "啟用後操作遊戲，即會開始記錄 request 與 response。";
+    if (body) body.hidden = collapsed;
+    if (toggle) toggle.textContent = collapsed ? "+" : "−";
   }
   function mount() {
     if (document.querySelector("#autoy-api-recorder")) return;
     const panel = document.createElement("section");
     panel.id = "autoy-api-recorder";
     panel.innerHTML = `<style>
-      #autoy-api-recorder{position:fixed;right:16px;bottom:16px;z-index:2147483647;width:min(560px,calc(100vw - 32px));background:#17202a;color:#edf2f7;border:1px solid #526273;border-radius:10px;box-shadow:0 12px 36px #0009;font:13px/1.45 system-ui,sans-serif;padding:12px}
-      #autoy-api-recorder h2{font-size:15px;margin:0} #autoy-api-recorder .top,#autoy-api-recorder .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap} #autoy-api-recorder .top{justify-content:space-between} #autoy-api-recorder button{background:#2d3c4c;color:inherit;border:1px solid #526273;border-radius:6px;padding:6px 8px;cursor:pointer} #autoy-api-recorder .danger{background:#8f3030} #autoy-api-recorder pre{max-height:280px;overflow:auto;white-space:pre-wrap;background:#0f151c;padding:9px;border-radius:6px;margin:10px 0 0;color:#b9d7f5} #autoy-api-recorder small{color:#b8c5d1}
-    </style><div class="top"><h2>Autoy API Recorder</h2><label><input id="autoy-recorder-enabled" type="checkbox"> 啟用紀錄</label></div><div class="actions"><span id="autoy-recorder-count"></span><button id="autoy-recorder-copy">複製 JSON</button><button id="autoy-recorder-download">下載 JSON</button><button id="autoy-recorder-clear" class="danger">清除</button></div><small id="autoy-recorder-status">token、Cookie、Authorization、密碼等欄位會遮罩。</small><pre id="autoy-recorder-output"></pre>`;
+      #autoy-api-recorder{position:fixed;left:16px;bottom:16px;z-index:2147483647;width:min(560px,calc(100vw - 32px));background:#17202a;color:#edf2f7;border:1px solid #526273;border-radius:10px;box-shadow:0 12px 36px #0009;font:13px/1.45 system-ui,sans-serif;padding:12px}
+      #autoy-api-recorder h2{font-size:15px;margin:0} #autoy-api-recorder .top,#autoy-api-recorder .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap} #autoy-api-recorder .top{justify-content:space-between;cursor:move;touch-action:none} #autoy-api-recorder .top-actions{display:flex;gap:8px;align-items:center} #autoy-api-recorder button{background:#2d3c4c;color:inherit;border:1px solid #526273;border-radius:6px;padding:6px 8px;cursor:pointer} #autoy-api-recorder .danger{background:#8f3030} #autoy-api-recorder pre{max-height:280px;overflow:auto;white-space:pre-wrap;background:#0f151c;padding:9px;border-radius:6px;margin:10px 0 0;color:#b9d7f5} #autoy-api-recorder small{color:#b8c5d1}
+    </style><div class="top"><h2>Autoy API Recorder</h2><div class="top-actions"><label><input id="autoy-recorder-enabled" type="checkbox"> 啟用紀錄</label><button id="autoy-recorder-toggle" type="button" aria-label="收合或展開">−</button></div></div><div id="autoy-recorder-body"><div class="actions"><span id="autoy-recorder-count"></span><button id="autoy-recorder-copy">複製 JSON</button><button id="autoy-recorder-download">下載 JSON</button><button id="autoy-recorder-clear" class="danger">清除</button></div><small id="autoy-recorder-status">token、Cookie、Authorization、密碼等欄位會遮罩。</small><pre id="autoy-recorder-output"></pre></div>`;
     document.body.appendChild(panel);
     panel.querySelector("#autoy-recorder-enabled").onchange = (event) => { enabled = event.target.checked; localStorage.setItem(ENABLED_KEY, String(enabled)); if (enabled) add({ event: "recorder-enabled", source: "tampermonkey" }); else notice("已停止記錄"); render(); };
     panel.querySelector("#autoy-recorder-copy").onclick = copy;
     panel.querySelector("#autoy-recorder-download").onclick = download;
     panel.querySelector("#autoy-recorder-clear").onclick = () => { logs = []; persist(); render(); notice("已清除"); };
+    panel.querySelector("#autoy-recorder-toggle").onclick = () => { collapsed = !collapsed; localStorage.setItem(COLLAPSED_KEY, String(collapsed)); render(); };
+    let drag = null;
+    const top = panel.querySelector(".top");
+    top.addEventListener("pointerdown", (event) => {
+      if (event.target.closest("button, input, label")) return;
+      const rect = panel.getBoundingClientRect();
+      drag = { dx: event.clientX - rect.left, dy: event.clientY - rect.top };
+      top.setPointerCapture(event.pointerId);
+    });
+    top.addEventListener("pointermove", (event) => {
+      if (!drag) return;
+      panel.style.left = `${Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, event.clientX - drag.dx))}px`;
+      panel.style.top = `${Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, event.clientY - drag.dy))}px`;
+      panel.style.right = "auto";
+      panel.style.bottom = "auto";
+    });
+    top.addEventListener("pointerup", () => { drag = null; });
+    top.addEventListener("pointercancel", () => { drag = null; });
     render();
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount, { once: true }); else mount();

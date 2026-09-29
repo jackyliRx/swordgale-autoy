@@ -3,6 +3,8 @@
 ## 目前已完成
 
 - GitHub Pages 靜態網站與多 token 帳號設定。
+- Tampermonkey 半自動登入切換器：保存帳號別名與使用者名稱、填入官方登入欄位、在密碼已由瀏覽器密碼管理器填入後送出官方表單；密碼、Cookie、驗證碼、OTP 與 token 不會保存或記錄。
+- 半自動登入切換器提供「登出並清除本站 Local Storage」：使用者確認後執行 `myteam.swordgale.online` origin 的 `localStorage.clear()` 並導向 `/login`；HTTP-only Cookie 與官方 CAPTCHA／OTP／裝置驗證不由外掛處理。
 - 同帳號只使用 `selected: true` 的 1 至 4 名出戰英雄。
 - 全部休息、完成休息、原地狩獵、狩獵前行、狩獵死亡結果、全部重生啟動與完成，以及回城／前往大草原兩方向移動流程的 Tampermonkey 實際錄製。
 - Tampermonkey API Recorder 可記錄 request 與 response，並遮罩 token、Authorization、Cookie 等敏感值。
@@ -31,6 +33,7 @@
 - JSON 有成對 request／response；寫入 API 顯示成功狀態或明確失敗原因。
 - 摘要記錄方法、端點、request body、有用 response 欄位、前置條件及等待時間。
 - 公開文件不包含角色名稱、帳號資料、區域玩家清單或 token。
+- 半自動登入切換器：新增、選擇、更新及刪除帳號別名時，只保存別名與使用者名稱；登入頁可填入帳號；密碼未由瀏覽器填入時不得送出登入；清除 Local Storage 前必須顯示影響範圍確認。
 
 ## 地圖管理設計
 

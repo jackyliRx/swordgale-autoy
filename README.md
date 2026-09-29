@@ -4,6 +4,17 @@
 
 伺服器若在成功回應的 `token` header 提供更新值，Autoy 會自動更新該帳號的本機 token。
 
+## Tampermonkey 半自動登入切換器
+
+`tools/autoy-account-switcher.user.js` 是獨立的 Tampermonkey 外掛，適用於 `https://myteam.swordgale.online/*`。
+
+1. 在 Tampermonkey Dashboard 建立腳本，貼上該檔案完整內容並儲存。
+2. 在登入頁新增帳號別名與使用者名稱／Email；資料只保存在 Tampermonkey 的腳本儲存空間。
+3. 選擇帳號後按「填入帳號」，再由瀏覽器密碼管理器填入密碼並按「登入」。
+4. CAPTCHA、OTP 與裝置核准必須由使用者完成；外掛不嘗試繞過或記錄這些驗證資料。
+
+外掛不保存密碼、Cookie、驗證碼或 token。它的「登出並清除本站 Local Storage」按鈕會先請求確認，接著清除 `myteam.swordgale.online` 的 Local Storage 並回到 `/login`；Tampermonkey 保存的帳號別名不會刪除，且 HTTP-only Cookie 不能由 userscript 清除。
+
 可在同一瀏覽器保存多個帳號 token；每個帳號各自保存設定、排程、冷卻與角色狀態。帳號列可分別啟動／停止，多個 token 可同時自動狩獵；切換畫面只切換檢視，不影響其他帳號。每個帳號僅使用 `selected: true` 的出戰角色，超過 4 名或狀態不明時不會呼叫狩獵 API。
 
 已實作：多帳號 token 各自獨立並行狩獵、各自設定、依出戰勾選篩選角色（最多 4 名）、讀取多角色、全隊重複休息、目標樓層前行、到達後原地狩獵、停止與錯誤保護。
