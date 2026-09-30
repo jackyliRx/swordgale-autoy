@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.9";
+const uiVersion = "0.7.10";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -159,11 +159,11 @@ function partyDebug(party) {
 }
 function config(accountId = activeId) {
   const account = accounts.find((a) => a.id === accountId);
-  if (account?.settings) { const settings = { ...defaultSettings(), ...account.settings }; return { target: Number(settings.target), hp: Number(settings.hp), sp: Number(settings.sp), restHp: Number(settings.restHp), restSp: Number(settings.restSp), useItems: settings.useItems === true, teamItems: settings.teamItems || {}, heroItems: settings.heroItems || {}, restMinutes: Number(settings.restMinutes), alertMinutes: Number(settings.alertMinutes), flowMessages: settings.flowMessages !== false, operationLog: settings.operationLog === true, debug: settings.debug === true }; }
-  return { target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, teamItems: {}, heroItems: {}, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked };
+  if (account?.settings) { const settings = { ...defaultSettings(), ...account.settings }; return { target: Number(settings.target), hp: Number(settings.hp), sp: Number(settings.sp), restHp: Number(settings.restHp), restSp: Number(settings.restSp), useItems: settings.useItems === true, teamItems: settings.teamItems || {}, heroItems: settings.heroItems || {}, restMinutes: Number(settings.restMinutes), alertMinutes: Number(settings.alertMinutes), flowMessages: settings.flowMessages !== false, operationLog: settings.operationLog === true, debug: settings.debug === true, itemRecoveryIncidentEnabled: settings.itemRecoveryIncidentEnabled === true }; }
+  return { target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, teamItems: {}, heroItems: {}, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked };
 }
 function validConfig(c) { return Number.isInteger(c.target) && c.target > 0 && c.hp >= 1 && c.hp <= 100 && c.sp >= 1 && c.sp <= 100 && c.restHp >= c.hp && c.restHp <= 100 && c.restSp >= c.sp && c.restSp <= 100 && c.restMinutes > 0 && c.alertMinutes >= 1; }
-function defaultSettings() { return { target: 1, hp: 80, sp: 70, restHp: 90, restSp: 90, useItems: false, teamItems: {}, heroItems: {}, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false }; }
+function defaultSettings() { return { target: 1, hp: 80, sp: 70, restHp: 90, restSp: 90, useItems: false, teamItems: {}, heroItems: {}, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false, itemRecoveryIncidentEnabled: false }; }
 function loadSettings(account = active()) {
   if (!account) return;
   account.settings = { ...defaultSettings(), ...(account.settings || {}) };
@@ -177,6 +177,7 @@ function loadSettings(account = active()) {
   $("flow-messages").checked = account.settings.flowMessages !== false;
   $("operation-log").checked = account.settings.operationLog === true;
   $("debug-console").checked = account.settings.debug === true;
+  $("item-recovery-incident-enabled").checked = account.settings.itemRecoveryIncidentEnabled === true;
   renderItemSettings(account.id);
 }
 function persistSettings() {
@@ -187,7 +188,7 @@ function persistSettings() {
 }
 function configFromForm() {
   const previous = active()?.settings || defaultSettings();
-  return { ...previous, target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked };
+  return { ...previous, target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked };
 }
 function clearRecoveryTimers(accountId) {
   const state = runtimeFor(accountId);
@@ -282,7 +283,12 @@ function loadItemRecoveryIncidents() {
 function saveItemRecoveryIncidents() { localStorage.setItem(itemRecoveryIncidentKey, JSON.stringify(itemRecoveryIncidents.slice(0, itemRecoveryIncidentLimit))); }
 function itemRecoverySnapshot(item) { return item ? { itemId: String(item.id), name: String(item.name || "").slice(0, 80) || null, quantity: itemQuantity(item) } : null; }
 function heroRecoverySnapshot(hero) { return hero ? { id: String(hero.id), hp: Number(hero.hp), sp: Number(hero.sp) } : null; }
+function shouldRecordItemRecoveryIncident(settings) { return settings?.itemRecoveryIncidentEnabled === true; }
+function classifyAbortedItemUse({ beforeQuantity, verifiedQuantity }) {
+  return Number.isFinite(Number(beforeQuantity)) && Number.isFinite(Number(verifiedQuantity)) && Number(verifiedQuantity) < Number(beforeQuantity) ? "consumed" : "unconfirmed";
+}
 function createItemRecoveryIncident(accountId, kind, message, detail) {
+  if (!shouldRecordItemRecoveryIncident(config(accountId))) return null;
   const incident = { incidentId: crypto.randomUUID(), createdAt: new Date().toISOString(), accountRef: String(accountId), kind, status: "pending", message, timeline: [{ at: new Date().toISOString(), type: "detected", ...detail }] };
   itemRecoveryIncidents.unshift(incident); itemRecoveryIncidents = itemRecoveryIncidents.slice(0, itemRecoveryIncidentLimit); saveItemRecoveryIncidents();
   scheduleItemRecoveryIncidentVerification(incident.incidentId, detail.item?.itemId, accountId);
@@ -813,6 +819,18 @@ async function tryUseRecoveryItems(c, accountId) {
     let result;
     try { result = await request(`/items/${encodeURIComponent(choice.item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity: 1, heroId: hero.id }) }, accountId); }
     catch (error) {
+      const requestWasAborted = error?.name === "AbortError" || /aborted a request/i.test(String(error?.message || error));
+      if (requestWasAborted && state.running) {
+        try {
+          const verifiedItems = await refreshItems(accountId);
+          const verifiedItem = (verifiedItems || []).find((item) => String(item.id) === String(choice.item.id));
+          if (classifyAbortedItemUse({ beforeQuantity: before.quantity, verifiedQuantity: verifiedItem ? itemQuantity(verifiedItem) : null }) === "consumed") {
+            try { await refresh(accountId); } catch { /* Back-pack evidence is sufficient; the normal next cycle refreshes heroes again. */ }
+            log(`${hero.name} 使用 ${choice.item.name} 的請求中止，但重新讀取背包確認已消耗；繼續補品流程`, accountId);
+            return true;
+          }
+        } catch { /* Preserve the original aborted-request evidence below; never resend a consumable request. */ }
+      }
       createItemRecoveryIncident(accountId, "use-request-failed", "使用補品 API 請求失敗", { item: { itemId: beforeItem.itemId, before: beforeItem, response: null }, hero: { before: beforeHero, after: null }, error: String(error.message || error).slice(0, 160) });
       log(`${hero.name} 使用 ${choice.item.name} 失敗，已自動進入休息：${error.message || error}`, accountId); return false;
     }
@@ -1169,7 +1187,7 @@ function initAccountEvents() {
   $("open-reports").onclick = () => { renderReports(activeId); openDialog("reports-dialog"); };
   $("refresh-reports").onclick = () => loadReports(activeId).catch((error) => warn(`讀取戰報列表失敗：${error.message || error}`, activeId));
   document.querySelectorAll("[data-close-dialog]").forEach((button) => button.onclick = () => button.closest("dialog")?.close());
-  for (const id of ["target-stage", "hp-target", "sp-target", "rest-hp-target", "rest-sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console"]) $(id).addEventListener("change", () => {
+  for (const id of ["target-stage", "hp-target", "sp-target", "rest-hp-target", "rest-sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console", "item-recovery-incident-enabled"]) $(id).addEventListener("change", () => {
     persistSettings();
     if (id === "flow-messages" && $("flow-messages").checked) log("已啟用流程訊息", activeId);
     if (id === "operation-log" && $("operation-log").checked) operation(activeId, "operation-log.enabled", { message: "使用者啟用操作紀錄" });
