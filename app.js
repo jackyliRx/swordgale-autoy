@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.10";
+const uiVersion = "0.7.11";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -19,7 +19,7 @@ const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
   if (!runtimes.has(id)) {
     const account = accounts.find((entry) => entry.id === id);
-    runtimes.set(id, { heroes: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
+    runtimes.set(id, { heroes: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, stopReason: null, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
   }
   return runtimes.get(id);
 }
@@ -287,11 +287,12 @@ function shouldRecordItemRecoveryIncident(settings) { return settings?.itemRecov
 function classifyAbortedItemUse({ beforeQuantity, verifiedQuantity }) {
   return Number.isFinite(Number(beforeQuantity)) && Number.isFinite(Number(verifiedQuantity)) && Number(verifiedQuantity) < Number(beforeQuantity) ? "consumed" : "unconfirmed";
 }
-function createItemRecoveryIncident(accountId, kind, message, detail) {
+function shouldResumeAfterAbortedItemUse(stopReason) { return /超過無動作提醒時間|已因錯誤停止/.test(String(stopReason || "")); }
+function createItemRecoveryIncident(accountId, kind, message, detail, { status = "pending", verify = true } = {}) {
   if (!shouldRecordItemRecoveryIncident(config(accountId))) return null;
-  const incident = { incidentId: crypto.randomUUID(), createdAt: new Date().toISOString(), accountRef: String(accountId), kind, status: "pending", message, timeline: [{ at: new Date().toISOString(), type: "detected", ...detail }] };
+  const incident = { incidentId: crypto.randomUUID(), createdAt: new Date().toISOString(), accountRef: String(accountId), kind, status, message, timeline: [{ at: new Date().toISOString(), type: "detected", ...detail }] };
   itemRecoveryIncidents.unshift(incident); itemRecoveryIncidents = itemRecoveryIncidents.slice(0, itemRecoveryIncidentLimit); saveItemRecoveryIncidents();
-  scheduleItemRecoveryIncidentVerification(incident.incidentId, detail.item?.itemId, accountId);
+  if (verify) scheduleItemRecoveryIncidentVerification(incident.incidentId, detail.item?.itemId, accountId);
   return incident;
 }
 function appendItemRecoveryIncident(incidentId, type, detail, status) {
@@ -820,13 +821,23 @@ async function tryUseRecoveryItems(c, accountId) {
     try { result = await request(`/items/${encodeURIComponent(choice.item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity: 1, heroId: hero.id }) }, accountId); }
     catch (error) {
       const requestWasAborted = error?.name === "AbortError" || /aborted a request/i.test(String(error?.message || error));
-      if (requestWasAborted && state.running) {
+      if (requestWasAborted) {
+        const stopReason = state.stopReason;
         try {
           const verifiedItems = await refreshItems(accountId);
           const verifiedItem = (verifiedItems || []).find((item) => String(item.id) === String(choice.item.id));
           if (classifyAbortedItemUse({ beforeQuantity: before.quantity, verifiedQuantity: verifiedItem ? itemQuantity(verifiedItem) : null }) === "consumed") {
             try { await refresh(accountId); } catch { /* Back-pack evidence is sufficient; the normal next cycle refreshes heroes again. */ }
-            log(`${hero.name} 使用 ${choice.item.name} 的請求中止，但重新讀取背包確認已消耗；繼續補品流程`, accountId);
+            createItemRecoveryIncident(accountId, "aborted-request-resolved", "補品請求中止，但重新讀取背包確認已消耗", { item: { itemId: beforeItem.itemId, before: beforeItem, verified: itemRecoverySnapshot(verifiedItem) }, hero: { before: beforeHero, after: heroRecoverySnapshot((runtimeFor(accountId).heroes || []).find((entry) => String(entry.id) === String(hero.id))) }, error: String(error.message || error).slice(0, 160), stopReason: stopReason || null }, { status: "resolved", verify: false });
+            if (!state.running && shouldResumeAfterAbortedItemUse(stopReason)) {
+              state.running = true; state.stopReason = null;
+              state.watchdog = setInterval(() => {
+                const settings = config(accountId);
+                if (state.running && state.nextWakeAt && Date.now() > state.nextWakeAt + settings.alertMinutes * 60000) stopRunner(accountId, "超過無動作提醒時間，已停止");
+              }, 30000);
+              renderAccounts();
+            }
+            log(`${hero.name} 使用 ${choice.item.name} 的請求中止，但重新讀取背包確認已消耗；${state.running ? "繼續補品流程" : "依停止原因不自動恢復"}`, accountId);
             return true;
           }
         } catch { /* Preserve the original aborted-request evidence below; never resend a consumable request. */ }
@@ -894,7 +905,7 @@ function stopRunner(accountId, reason = "已停止") {
   const state = runtimeFor(accountId);
   operation(accountId, "runner.stopped", { reason });
   debug(accountId, "runner.stopped", { reason });
-  state.running = false;
+  state.running = false; state.stopReason = reason;
   clearTimeout(state.timer); clearInterval(state.watchdog);
   for (const controller of state.aborters) controller.abort();
   state.aborters.clear(); state.timer = state.watchdog = null; state.nextWakeAt = 0;
@@ -1120,7 +1131,7 @@ function startRunner(accountId) {
   if (state.running || state.actionBusy) return;
   const c = config(accountId);
   if (!validConfig(c)) { warn("請先設定有效的狩獵目標與 HP／SP 門檻", accountId); return; }
-  state.running = true; state.restUntil = 0; state.recoveryFallbackHeroes.clear();
+  state.running = true; state.stopReason = null; state.restUntil = 0; state.recoveryFallbackHeroes.clear();
   operation(accountId, "runner.started", { version: uiVersion, targetStage: c.target, hpTarget: c.hp, spTarget: c.sp });
   debug(accountId, "runner.started", { config: c });
   if (accountId === activeId) { $("alert").hidden = true; document.title = "Autoy"; setState(null, accountId); }
