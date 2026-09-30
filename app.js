@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.12";
+const uiVersion = "0.7.13";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -281,12 +281,17 @@ function loadItemRecoveryIncidents() {
   catch { return []; }
 }
 function saveItemRecoveryIncidents() { localStorage.setItem(itemRecoveryIncidentKey, JSON.stringify(itemRecoveryIncidents.slice(0, itemRecoveryIncidentLimit))); }
-function itemRecoverySnapshot(item) { return item ? { itemId: String(item.id), name: String(item.name || "").slice(0, 80) || null, quantity: itemQuantity(item) } : null; }
+function itemRecoverySnapshot(item) { return item ? { itemId: String(item.id), name: String(item.name || "").slice(0, 80) || null, quantity: itemQuantity(item), available: Number.isFinite(Number(item.available)) ? Number(item.available) : null } : null; }
 function heroRecoverySnapshot(hero) { return hero ? { id: String(hero.id), hp: Number(hero.hp), sp: Number(hero.sp) } : null; }
 function shouldRecordItemRecoveryIncident(settings) { return settings?.itemRecoveryIncidentEnabled === true; }
 function shouldInterceptItemRecoveryIssue(settings) { return settings?.itemRecoveryIncidentEnabled === true; }
 function classifyAbortedItemUse({ beforeQuantity, verifiedQuantity }) {
   return Number.isFinite(Number(beforeQuantity)) && Number.isFinite(Number(verifiedQuantity)) && Number(verifiedQuantity) < Number(beforeQuantity) ? "consumed" : "unconfirmed";
+}
+function classifyInventoryVerification({ beforeQuantity, verifiedQuantity }) {
+  if (!Number.isFinite(Number(beforeQuantity)) || !Number.isFinite(Number(verifiedQuantity))) return { status: "unconfirmed", kind: "inventory-unavailable" };
+  if (Number(verifiedQuantity) < Number(beforeQuantity)) return { status: "resolved", kind: "inventory-consumed" };
+  return { status: "confirmed", kind: Number(verifiedQuantity) > Number(beforeQuantity) ? "inventory-increased" : "inventory-not-decreased" };
 }
 function shouldResumeAfterAbortedItemUse(stopReason) { return /超過無動作提醒時間|已因錯誤停止/.test(String(stopReason || "")); }
 function createItemRecoveryIncident(accountId, kind, message, detail, { status = "pending", verify = true } = {}) {
@@ -304,13 +309,34 @@ function appendItemRecoveryIncident(incidentId, type, detail, status) {
   saveItemRecoveryIncidents();
   if ($("item-recovery-incidents")?.open) renderItemRecoveryIncidents();
 }
+function finalizeItemRecoveryIncident(incidentId, classification) {
+  const incident = itemRecoveryIncidents.find((entry) => entry.incidentId === incidentId);
+  if (!incident) return;
+  incident.status = classification.status;
+  incident.kind = classification.kind;
+  incident.message = classification.kind === "inventory-increased" ? "補品效果已生效，庫存反而增加" : classification.kind === "inventory-not-decreased" ? "補品效果已生效，但庫存未扣除" : classification.kind === "inventory-consumed" ? "後續背包驗證確認補品已消耗" : "背包資料不足，無法確認補品庫存";
+  saveItemRecoveryIncidents();
+  if ($("item-recovery-incidents")?.open) renderItemRecoveryIncidents();
+}
+function itemRecoveryRuntimeSnapshot(accountId) {
+  const state = runtimeFor(accountId);
+  return { running: state.running, itemRecoveryActive: state.itemRecoveryActive, writeBusy: state.writeBusy, activeApiRequests, queuedApiRequests: apiRequestQueue.length, stopReason: state.stopReason || null };
+}
 function scheduleItemRecoveryIncidentVerification(incidentId, itemId, accountId) {
   [1000, 5000, 15000].forEach((delay, index, delays) => window.setTimeout(async () => {
     try {
       const items = await refreshItems(accountId);
       const item = (items || []).find((entry) => String(entry.id) === String(itemId));
-      appendItemRecoveryIncident(incidentId, "inventory-verification", { delayMs: delay, item: itemRecoverySnapshot(item) }, index === delays.length - 1 ? "unconfirmed" : undefined);
-    } catch (error) { appendItemRecoveryIncident(incidentId, "inventory-verification-error", { delayMs: delay, error: String(error.message || error).slice(0, 160) }, index === delays.length - 1 ? "unconfirmed" : undefined); }
+      const incident = itemRecoveryIncidents.find((entry) => entry.incidentId === incidentId);
+      const snapshot = itemRecoverySnapshot(item);
+      const beforeQuantity = incident?.timeline?.[0]?.item?.before?.quantity;
+      appendItemRecoveryIncident(incidentId, "inventory-verification", { scheduledDelayMs: delay, elapsedMs: incident ? Date.now() - Date.parse(incident.createdAt) : null, item: snapshot, quantityDelta: Number.isFinite(Number(beforeQuantity)) && Number.isFinite(Number(snapshot?.quantity)) ? Number(snapshot.quantity) - Number(beforeQuantity) : null, runtime: itemRecoveryRuntimeSnapshot(accountId) });
+      if (index === delays.length - 1) {
+        const quantities = (itemRecoveryIncidents.find((entry) => entry.incidentId === incidentId)?.timeline || []).filter((entry) => entry.type === "inventory-verification").map((entry) => Number(entry.item?.quantity)).filter(Number.isFinite);
+        const classification = classifyInventoryVerification({ beforeQuantity, verifiedQuantity: quantities.length ? Math.min(...quantities) : null });
+        finalizeItemRecoveryIncident(incidentId, classification);
+      }
+    } catch (error) { appendItemRecoveryIncident(incidentId, "inventory-verification-error", { scheduledDelayMs: delay, error: String(error.message || error).slice(0, 160), runtime: itemRecoveryRuntimeSnapshot(accountId) }, index === delays.length - 1 ? "unconfirmed" : undefined); }
   }, delay));
 }
 function renderItemRecoveryIncidents() {
