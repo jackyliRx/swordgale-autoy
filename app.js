@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.17";
+const uiVersion = "0.7.18";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -22,7 +22,7 @@ const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
   if (!runtimes.has(id)) {
     const account = accounts.find((entry) => entry.id === id);
-    runtimes.set(id, { heroes: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, forgeProfile: null, forgeTypes: [], forgeMines: [], forgeDraft: { workshop: 1, enabled: false, heroId: "", name: "", type: "", selectedMines: [], recoveryItemId: "" }, forgeDataUpdatedAt: 0, forgeRunning: false, forgeTimer: null, forgeWakeAt: 0, forgeBusy: false, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, stopReason: null, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, writeQueue: Promise.resolve(), actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
+    runtimes.set(id, { heroes: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemsPayload: null, itemsRefreshPromise: null, forgeProfile: null, forgeTypes: [], forgeMines: [], forgeDraft: { workshop: 1, enabled: false, heroId: "", name: "", type: "", selectedMines: [], recoveryItemId: "" }, forgeDataUpdatedAt: 0, forgeRunning: false, forgeTimer: null, forgeWakeAt: 0, forgeBusy: false, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, stopReason: null, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, writeQueue: Promise.resolve(), actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
   }
   return runtimes.get(id);
 }
@@ -381,15 +381,18 @@ function renderForgeDebugLogs() {
 async function refreshForgeData(accountId = activeId) {
   const state = runtimeFor(accountId);
   recordForgeDebug(accountId, "forge-data.refresh.started");
+  const heroesPayloadPromise = state.refreshPromise ? state.refreshPromise.then(() => ({ heroes: state.heroes })) : request("/heroes", {}, accountId);
+  const itemsPayloadPromise = refreshItems(accountId).then(() => state.itemsPayload);
   const [profile, heroesPayload, itemsPayload, types] = await Promise.all([
     request("/profile", {}, accountId),
-    request("/heroes", {}, accountId),
-    request("/items", {}, accountId),
+    heroesPayloadPromise,
+    itemsPayloadPromise,
     loadLiveForgeTypes(),
   ]);
   state.forgeProfile = profile || null;
   state.heroes = heroesPayload?.heroes || [];
   state.items = normalizeItems(itemsPayload) || state.items;
+  state.itemsPayload = itemsPayload || state.itemsPayload;
   state.itemsUpdatedAt = Date.now();
   state.forgeMines = normalizeForgeMines(itemsPayload) || [];
   state.forgeTypes = types;
@@ -416,13 +419,20 @@ function saveForgeDraft(accountId, draft) {
   account.settings = { ...defaultSettings(), ...(account.settings || {}), forgeWorkshops: { ...(account.settings?.forgeWorkshops || {}), [String(draft.workshop)]: { enabled: draft.enabled === true, heroId: String(draft.heroId || ""), name: String(draft.name || "").trim(), type: String(draft.type || ""), selectedMines: (draft.selectedMines || []).map((entry) => ({ itemId: entry.itemId, quantity: Number(entry.quantity) })), recoveryItemId: String(draft.recoveryItemId || "") } } };
   save();
 }
+function hasConfiguredForgeWorkshop(workshops) {
+  return Object.values(workshops || {}).some((draft) => draft?.enabled === true && Boolean(String(draft.heroId || "")) && Boolean(String(draft.name || "").trim()) && Boolean(String(draft.type || "")) && Array.isArray(draft.selectedMines) && draft.selectedMines.length > 0);
+}
 function renderForgeSettings(accountId = activeId) {
   const panel = $("forge-settings");
   if (!panel) return;
   const account = accounts.find((entry) => entry.id === accountId);
   const state = runtimeFor(accountId);
   if (!account) return;
-  if (!state.forgeDataUpdatedAt) { panel.innerHTML = `<h3>自動鍛造</h3><label class="checkbox-setting"><input id="forge-enabled" type="checkbox" ${account.settings?.forgeEnabled === true ? "checked" : ""} /> 啟用此帳號自動鍛造</label><p class="hint">按「重新讀取」後，會載入目前鍛造坊、可用角色、裝備類型與材料。</p>`; $("forge-enabled").onchange = () => setForgeEnabled(accountId, $("forge-enabled").checked); return; }
+  if (!state.forgeDataUpdatedAt) {
+    panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">先讀取鍛造資料，再設定各鍛造坊排程；帳號開關不會取代設定。</p></div><button id="forge-refresh-data" type="button">讀取鍛造資料</button></div><div class="item-grid"><fieldset disabled><label>選擇鍛造坊<select><option>等待讀取</option></select></label><label>選擇角色<select><option>等待讀取</option></select></label><label>裝備名稱<input value="等待讀取" /></label><label>裝備類型<select><option>等待讀取</option></select></label></fieldset><fieldset disabled><strong>選擇材料</strong><label>材料<select><option>等待讀取</option></select></label><label>數量<input value="1" /></label></fieldset></div><label class="checkbox-setting"><input id="forge-enabled" type="checkbox" disabled /> 啟用此帳號自動鍛造（需先完成至少一個鍛造坊排程）</label>`;
+    $("forge-refresh-data").onclick = () => refreshForgeData(accountId).catch((error) => warn(`讀取鍛造資料失敗：${error.message || error}`, accountId));
+    return;
+  }
   const workshops = forgeWorkshopsFromProfile(state.forgeProfile);
   const heroes = forgeEligibleHeroes(state.heroes);
   const draft = state.forgeDraft;
@@ -456,6 +466,11 @@ function stopForgeRunner(accountId, reason = "已停止") {
 function setForgeEnabled(accountId, enabled) {
   const account = accounts.find((entry) => entry.id === accountId);
   if (!account) return;
+  if (enabled && !hasConfiguredForgeWorkshop(account.settings?.forgeWorkshops)) {
+    warn("請先完成並啟用至少一個鍛造坊排程，再啟用此帳號自動鍛造", accountId);
+    if (accountId === activeId) renderForgeSettings(accountId);
+    return;
+  }
   account.settings = { ...defaultSettings(), ...(account.settings || {}), forgeEnabled: enabled === true };
   save();
   if (enabled) {
@@ -620,13 +635,19 @@ function itemLabel(item) {
 }
 async function refreshItems(accountId = activeId) {
   const state = runtimeFor(accountId);
-  const result = await request("/items", {}, accountId);
-  state.items = normalizeItems(result) || [];
-  state.itemsUpdatedAt = Date.now();
-  const account = accounts.find((entry) => entry.id === accountId);
-  if (account) { account.itemCatalog = state.items; account.itemsUpdatedAt = state.itemsUpdatedAt; save(); }
-  if (accountId === activeId) renderItemSettings(accountId);
-  return state.items;
+  if (state.itemsRefreshPromise) return state.itemsRefreshPromise;
+  state.itemsRefreshPromise = (async () => {
+    const result = await request("/items", {}, accountId);
+    state.itemsPayload = result;
+    state.items = normalizeItems(result) || [];
+    state.itemsUpdatedAt = Date.now();
+    const account = accounts.find((entry) => entry.id === accountId);
+    if (account) { account.itemCatalog = state.items; account.itemsUpdatedAt = state.itemsUpdatedAt; save(); }
+    if (accountId === activeId) renderItemSettings(accountId);
+    return state.items;
+  })();
+  try { return await state.itemsRefreshPromise; }
+  finally { state.itemsRefreshPromise = null; }
 }
 function itemSelect(name, value, accountId) {
   const options = [`<option value="">未設定</option>`].concat(recoveryItems(accountId).map((item) => `<option value="${safe(item.id)}" ${String(value || "") === String(item.id) ? "selected" : ""}>${safe(itemLabel(item))}</option>`));

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 
-const source = fs.readFileSync("app.js", "utf8").replace("init();", "globalThis.__AUTOY_TEST_API__ = { forgeWorkshopsFromProfile, forgeEligibleHeroes, validateForgeDraft, shouldRecordForgeDebug, nextForgeAction }; ");
+const source = fs.readFileSync("app.js", "utf8").replace("init();", "globalThis.__AUTOY_TEST_API__ = { forgeWorkshopsFromProfile, forgeEligibleHeroes, validateForgeDraft, shouldRecordForgeDebug, nextForgeAction, hasConfiguredForgeWorkshop }; ");
 const storage = new Map();
 const context = {
   localStorage: { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)), removeItem: (key) => storage.delete(key) },
@@ -22,7 +22,7 @@ context.globalThis = context;
 vm.createContext(context);
 vm.runInContext(source, context, { filename: "app.js" });
 
-const { forgeWorkshopsFromProfile, forgeEligibleHeroes, validateForgeDraft, shouldRecordForgeDebug, nextForgeAction } = context.__AUTOY_TEST_API__;
+const { forgeWorkshopsFromProfile, forgeEligibleHeroes, validateForgeDraft, shouldRecordForgeDebug, nextForgeAction, hasConfiguredForgeWorkshop } = context.__AUTOY_TEST_API__;
 
 assert.deepEqual(JSON.parse(JSON.stringify(forgeWorkshopsFromProfile({ forgeExpanded: 4 }))), [1, 2, 3, 4, 5]);
 assert.deepEqual(JSON.parse(JSON.stringify(forgeWorkshopsFromProfile({ forgeExpanded: 6 }))), [1, 2, 3, 4, 5, 6, 7]);
@@ -49,4 +49,7 @@ assert.deepEqual(JSON.parse(JSON.stringify(nextForgeAction({ workshops: [1, 2], 
 assert.deepEqual(JSON.parse(JSON.stringify(nextForgeAction({ workshops: [1], heroes: [{ id: 1, hp: 20, actionState: 0, huntZone: 0, perished: false }], drafts: { 1: { enabled: true, heroId: 1, name: "測試", type: "katana", selectedMines: [{ itemId: 10, quantity: 1 }] } } }))), { kind: "start", workshop: 1, heroId: 1 });
 assert.deepEqual(JSON.parse(JSON.stringify(nextForgeAction({ workshops: [1], heroes: [{ id: 1, hp: 20, actionState: 0, huntZone: 0, perished: false }], drafts: {} }))), { kind: "idle" });
 assert.deepEqual(JSON.parse(JSON.stringify(nextForgeAction({ workshops: [1], heroes: [{ id: 7, hp: 20, actionState: 5, actionTarget: 1, canComplete: false, actionCompleteTime: "2030-01-01T00:00:00.000Z" }], drafts: {} }))), { kind: "wait", workshop: 1, heroId: 7, actionCompleteTime: "2030-01-01T00:00:00.000Z" });
+
+assert.equal(hasConfiguredForgeWorkshop({ 1: { enabled: true, heroId: "", name: "", type: "", selectedMines: [] } }), false, "未完成設定時不能啟動帳號自動鍛造");
+assert.equal(hasConfiguredForgeWorkshop({ 1: { enabled: true, heroId: "1", name: "測試", type: "katana", selectedMines: [{ itemId: 10, quantity: 1 }] } }), true, "至少一個完整且啟用的鍛造坊才可啟動帳號自動鍛造");
 console.log("forge validation and debug setting gate passes");
