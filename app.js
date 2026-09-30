@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.18";
+const uiVersion = "0.7.20";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -245,7 +245,10 @@ async function request(path, options = {}, accountId = activeId) {
       const errorText = await response.text();
       operation(accountId, "api.failure", { requestId, method, path, requestBody, status: response.status, durationMs: Date.now() - startedAt, responseBody: operationRequestBody(errorText) });
       debug(accountId, "api.error", { method, path, status: response.status, response: errorText });
-      throw new Error(`API ${response.status}: ${errorText}`);
+      const err = new Error(`API ${response.status}: ${errorText}`);
+      try { err.responseBody = JSON.parse(errorText); } catch {}
+      err.statusCode = response.status;
+      throw err;
     }
     const rotatedToken = response.headers.get("token");
     if (rotatedToken && rotatedToken !== account.token) { account.token = rotatedToken.replace(/^Bearer\s+/i, ""); save(); renderAccounts(); log("已更新 API token", accountId); }
@@ -1447,6 +1450,21 @@ async function turn(accountId) {
     }
     else { operation(accountId, "runner.branch", { branch: "hunt" }); debug(accountId, "runner.branch", { branch: "hunt" }); await hunt(c, accountId); }
   } catch (error) {
+    if (error.name !== "AbortError" && error.statusCode === 403 && error.responseBody?.code === "CAPTCHA_REQUIRED") {
+      const challengeId = Number(error.responseBody.challengeId);
+      if (Number.isFinite(challengeId)) {
+        log(`偵測到活人驗證要求（挑戰 ${challengeId}）；正在自動完成`, accountId);
+        try {
+          const verify = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, checked: true }) }, accountId);
+          if (verify?.ok !== true) throw new Error("活人驗證回應異常");
+          log(`已自動完成活人驗證（挑戰 ${challengeId}）`, accountId);
+          if (state.running) schedule(1000, accountId);
+          return;
+        } catch (captchaError) {
+          if (captchaError.name !== "AbortError") log(`活人驗證失敗：${captchaError.message || captchaError}`, accountId);
+        }
+      }
+    }
     if (error.name !== "AbortError") debug(accountId, "runner.error", { message: error.message || String(error) });
     if (error.name !== "AbortError") log(error.message || String(error), accountId);
     if (state.running) stopRunner(accountId, "已因錯誤停止");

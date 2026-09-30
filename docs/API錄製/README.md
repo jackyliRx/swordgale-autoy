@@ -20,6 +20,7 @@
 | 回城－完成行動 | `POST /api/move/complete` | [回城－完成行動](回城-完成行動.md) | `回城-完成行動.json` |
 | 前往大草原（啟動移動） | `POST /api/move/1` | [前往大草原](前往大草原.md) | `前往大草原.json` |
 | 前往大草原－完成行動 | `POST /api/move/complete` | [前往大草原－完成行動](前往大草原-完成行動.md) | `前往大草原-完成行動.json` |
+| 活人驗證 | `GET /api/captcha`、`POST /api/captcha/verify` | [活人驗證](活人驗證.md) | `tools/活人驗證.json` |
 
 ## 錄製方式
 
