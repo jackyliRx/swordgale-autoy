@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.14";
+const uiVersion = "0.7.15";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -357,6 +357,34 @@ function recordForgeDebug(accountId, event, detail = {}) {
 function renderForgeDebugLogs() {
   const logs = forgeDebugLogs.filter((entry) => entry.accountRef === String(activeId));
   $("forge-debug-log-list").textContent = logs.length ? JSON.stringify(logs, null, 2) : "尚未記錄鍛造除錯資料。勾選後才會記錄新的鍛造流程。";
+}
+async function refreshForgeData(accountId = activeId) {
+  const state = runtimeFor(accountId);
+  recordForgeDebug(accountId, "forge-data.refresh.started");
+  const [profile, heroesPayload, itemsPayload, types] = await Promise.all([
+    request("/profile", {}, accountId),
+    request("/heroes", {}, accountId),
+    request("/items", {}, accountId),
+    loadLiveForgeTypes(),
+  ]);
+  state.forgeProfile = profile || null;
+  state.heroes = heroesPayload?.heroes || [];
+  state.forgeMines = normalizeForgeMines(itemsPayload) || [];
+  state.forgeTypes = types;
+  state.forgeDataUpdatedAt = Date.now();
+  recordForgeDebug(accountId, "forge-data.refresh.completed", { workshops: forgeWorkshopsFromProfile(profile).length, typeCount: types.length, eligibleHeroCount: forgeEligibleHeroes(state.heroes).length, mineCount: state.forgeMines.length });
+  if (accountId === activeId) { renderHeroes(accountId); renderForgeData(); }
+  return state;
+}
+function renderForgeData(accountId = activeId) {
+  const panel = $("forge-data-summary");
+  if (!panel) return;
+  const state = runtimeFor(accountId);
+  if (!state.forgeDataUpdatedAt) { panel.textContent = "尚未讀取鍛造資料。"; return; }
+  const workshops = forgeWorkshopsFromProfile(state.forgeProfile);
+  const heroes = forgeEligibleHeroes(state.heroes);
+  const typeText = state.forgeTypes.map((type) => `${safe(type.name)}（上限 ${Number(type.limit)}）`).join("、");
+  panel.innerHTML = `<p>已讀取：鍛造坊 ${workshops.length} 個（${workshops.map((target) => `#${target}`).join("、")}）、可鍛造角色 ${heroes.length} 名、材料 ${state.forgeMines.length} 種。</p><p>裝備類型：${typeText || "未取得"}</p><p class="hint">更新時間：${safe(new Date(state.forgeDataUpdatedAt).toLocaleTimeString())}。目前僅顯示與驗證資料，不會送出鍛造寫入請求。</p>`;
 }
 function loadItemRecoveryIncidents() {
   try { const value = JSON.parse(localStorage.getItem(itemRecoveryIncidentKey) || "[]"); return Array.isArray(value) ? value.filter((entry) => entry && typeof entry === "object").slice(0, itemRecoveryIncidentLimit) : []; }
@@ -1313,6 +1341,8 @@ function initAccountEvents() {
     if (!window.confirm("只會清除目前帳號的補品異常紀錄，不影響帳號、補品設定或操作紀錄。確定清除？")) return;
     itemRecoveryIncidents = itemRecoveryIncidents.filter((entry) => entry.accountRef !== String(activeId)); saveItemRecoveryIncidents(); renderItemRecoveryIncidents();
   };
+  $("open-forge").onclick = () => { renderForgeData(); openDialog("forge-dialog"); };
+  $("refresh-forge-data").onclick = () => refreshForgeData(activeId).catch((error) => warn(`讀取鍛造資料失敗：${error.message || error}`, activeId));
   $("open-forge-debug").onclick = () => { renderForgeDebugLogs(); openDialog("forge-debug-dialog"); };
   $("copy-forge-debug").onclick = () => copyText(JSON.stringify(forgeDebugLogs.filter((entry) => entry.accountRef === String(activeId)), null, 2), "鍛造除錯 JSON 已複製");
   $("clear-forge-debug").onclick = () => {
