@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.11";
+const uiVersion = "0.7.12";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -284,6 +284,7 @@ function saveItemRecoveryIncidents() { localStorage.setItem(itemRecoveryIncident
 function itemRecoverySnapshot(item) { return item ? { itemId: String(item.id), name: String(item.name || "").slice(0, 80) || null, quantity: itemQuantity(item) } : null; }
 function heroRecoverySnapshot(hero) { return hero ? { id: String(hero.id), hp: Number(hero.hp), sp: Number(hero.sp) } : null; }
 function shouldRecordItemRecoveryIncident(settings) { return settings?.itemRecoveryIncidentEnabled === true; }
+function shouldInterceptItemRecoveryIssue(settings) { return settings?.itemRecoveryIncidentEnabled === true; }
 function classifyAbortedItemUse({ beforeQuantity, verifiedQuantity }) {
   return Number.isFinite(Number(beforeQuantity)) && Number.isFinite(Number(verifiedQuantity)) && Number(verifiedQuantity) < Number(beforeQuantity) ? "consumed" : "unconfirmed";
 }
@@ -805,6 +806,7 @@ function recoveryUnavailableReason(hero, c, accountId) {
 async function tryUseRecoveryItems(c, accountId) {
   if (!c.useItems || !runtimeFor(accountId).itemRecoveryActive || restComplete(c, accountId)) return false;
   const state = runtimeFor(accountId);
+  const interceptItemRecoveryIssue = shouldInterceptItemRecoveryIssue(c);
   if (!state.itemsUpdatedAt || Date.now() - state.itemsUpdatedAt > 15000) await refreshItems(accountId);
   let used = false;
   for (const hero of selectedParty(accountId)) {
@@ -820,6 +822,10 @@ async function tryUseRecoveryItems(c, accountId) {
     let result;
     try { result = await request(`/items/${encodeURIComponent(choice.item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity: 1, heroId: hero.id }) }, accountId); }
     catch (error) {
+      if (!interceptItemRecoveryIssue) {
+        log(`${hero.name} 使用 ${choice.item.name} 的請求結果未確認；未啟用補品異常攔截，下一輪重新讀取後繼續`, accountId);
+        return true;
+      }
       const requestWasAborted = error?.name === "AbortError" || /aborted a request/i.test(String(error?.message || error));
       if (requestWasAborted) {
         const stopReason = state.stopReason;
@@ -847,6 +853,7 @@ async function tryUseRecoveryItems(c, accountId) {
     }
     const updatedItems = normalizeItems(result.items);
     if (!updatedItems) {
+      if (!interceptItemRecoveryIssue) return true;
       createItemRecoveryIncident(accountId, "inventory-missing", "使用補品成功回應未包含可辨識背包資料", { item: { itemId: beforeItem.itemId, before: beforeItem, response: null }, hero: { before: beforeHero, after: heroRecoverySnapshot(result.hero) } });
       log(`${hero.name} 使用 ${choice.item.name} 後未回傳可辨識的背包資料，已自動進入休息`, accountId); return false;
     }
@@ -855,6 +862,7 @@ async function tryUseRecoveryItems(c, accountId) {
     if (account) { account.itemCatalog = state.items; account.itemsUpdatedAt = state.itemsUpdatedAt; save(); }
     const updatedHero = result.hero;
     if (!updatedHero) {
+      if (!interceptItemRecoveryIssue) return true;
       createItemRecoveryIncident(accountId, "hero-missing", "使用補品成功回應未包含角色資料", { item: { itemId: beforeItem.itemId, before: beforeItem, response: itemRecoverySnapshot((updatedItems || []).find((item) => String(item.id) === String(choice.item.id))) }, hero: { before: beforeHero, after: null } });
       log(`${hero.name} 使用 ${choice.item.name} 後未回傳角色資料，已自動進入休息`, accountId); return false;
     }
@@ -862,6 +870,7 @@ async function tryUseRecoveryItems(c, accountId) {
     let afterItem = itemById(choice.item.id, accountId);
     let afterQuantity = afterItem ? itemQuantity(afterItem) : 0;
     if (afterQuantity >= before.quantity) {
+      if (!interceptItemRecoveryIssue) return true;
       await refreshItems(accountId);
       afterItem = itemById(choice.item.id, accountId);
       afterQuantity = afterItem ? itemQuantity(afterItem) : 0;
@@ -877,6 +886,7 @@ async function tryUseRecoveryItems(c, accountId) {
       }
     }
     if (Number(updatedHero.hp) <= before.hp && Number(updatedHero.sp) <= before.sp) {
+      if (!interceptItemRecoveryIssue) return true;
       createItemRecoveryIncident(accountId, "vitals-not-increased", "補品庫存已消耗但 HP／SP 未增加", { item: { itemId: beforeItem.itemId, before: beforeItem, response: itemRecoverySnapshot(afterItem) }, hero: { before: beforeHero, after: heroRecoverySnapshot(updatedHero) } });
       log(`${hero.name} 使用 ${choice.item.name} 後 HP／SP 未增加，已自動進入休息`, accountId); return false;
     }
