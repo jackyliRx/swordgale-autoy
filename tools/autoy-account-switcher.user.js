@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Autoy 半自動登入切換器
 // @namespace    https://github.com/jackyliRx/swordgale-autoy
-// @version      1.1.0
+// @version      1.1.1
 // @description  儲存帳號別名與使用者名稱，協助填入登入帳號；密碼、驗證碼與 Cookie 一律不保存。
 // @match        https://myteam.swordgale.online/*
 // @run-at       document-idle
@@ -36,6 +36,21 @@
 
   async function saveAccounts(accounts) {
     await GM_setValue(STORAGE_KEY, normalizeAccounts(accounts));
+  }
+
+  // 以別名作為更新鍵；目前下拉選到另一筆時，輸入新別名仍會新增而不覆寫原帳號。
+  function saveAccountEntry(accounts, { selectedId = "", alias, username, idFactory = () => crypto.randomUUID() }) {
+    const normalizedAlias = String(alias || "").trim().slice(0, 60);
+    const normalizedUsername = String(username || "").trim().slice(0, 254);
+    if (!normalizedAlias || !normalizedUsername) return { accounts: normalizeAccounts(accounts), saved: null };
+    const existingByAlias = accounts.find((account) => account.alias === normalizedAlias);
+    const selectedWithSameAlias = accounts.find((account) => account.id === selectedId && account.alias === normalizedAlias);
+    const id = existingByAlias?.id || selectedWithSameAlias?.id || idFactory();
+    const saved = { id, alias: normalizedAlias, username: normalizedUsername };
+    return {
+      accounts: normalizeAccounts([...accounts.filter((account) => account.id !== id && account.alias !== normalizedAlias), saved]),
+      saved,
+    };
   }
 
   function findLoginFields() {
@@ -92,9 +107,9 @@
     <div class="body">
       <label>已儲存帳號<select data-field="account"><option value="">選擇帳號</option></select></label>
       <div class="row"><button type="button" data-action="fill">填入帳號</button><button type="button" data-action="login">登入</button></div>
-      <label>新增／更新別名<input data-field="alias" maxlength="60" placeholder="例如：主帳號"></label>
+      <label>帳號別名<input data-field="alias" maxlength="60" placeholder="例如：主帳號"></label>
       <label>使用者名稱／Email<input data-field="username" maxlength="254" autocomplete="username" placeholder="不保存密碼"></label>
-      <div class="row"><button type="button" data-action="save">儲存帳號</button><button type="button" data-action="delete">刪除帳號</button></div>
+      <div class="row"><button type="button" data-action="save">新增／更新帳號</button><button type="button" data-action="delete">刪除帳號</button></div>
       <div class="row"><button type="button" class="danger" data-action="logout">登出並清除本站 Local Storage</button></div>
       <small class="status" data-field="status"></small>
       <small>只保存別名與使用者名稱。密碼、Cookie、驗證碼與 OTP 不會保存；請交給瀏覽器密碼管理器與官方驗證流程。</small>
@@ -148,12 +163,12 @@
         const alias = aliasInput.value.trim();
         const username = usernameInput.value.trim();
         if (!alias || !username) return show("別名與使用者名稱皆為必填。" );
-        const current = selected();
-        const replacement = { id: current?.id || crypto.randomUUID(), alias, username };
-        accounts = normalizeAccounts([...accounts.filter((account) => account.id !== current?.id && account.alias !== alias), replacement]);
+        const result = saveAccountEntry(accounts, { selectedId: selected()?.id, alias, username });
+        accounts = result.accounts;
         await saveAccounts(accounts);
-        render(); accountSelect.value = replacement.id;
-        show(`已儲存「${alias}」；未保存密碼。`);
+        render(); accountSelect.value = "";
+        aliasInput.value = ""; usernameInput.value = "";
+        show(`已儲存「${alias}」；已重設為「選擇帳號」，可直接新增下一筆。未保存密碼。`);
         return;
       }
       if (action === "delete") {
@@ -196,6 +211,6 @@
   }
 
   if (typeof globalThis !== "undefined" && globalThis.__AUTOY_ACCOUNT_SWITCHER_TEST__) {
-    globalThis.__AUTOY_ACCOUNT_SWITCHER_TEST_API__ = { normalizeAccounts };
+    globalThis.__AUTOY_ACCOUNT_SWITCHER_TEST_API__ = { normalizeAccounts, saveAccountEntry };
   }
 })();

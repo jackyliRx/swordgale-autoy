@@ -7,13 +7,20 @@
 ## Tampermonkey 半自動登入切換器
 
 `tools/autoy-account-switcher.user.js` 是獨立的 Tampermonkey 外掛，適用於 `https://myteam.swordgale.online/*`。
+目前版本為 `1.1.1`。
 
 1. 在 Tampermonkey Dashboard 建立腳本，貼上該檔案完整內容並儲存。
-2. 在登入頁新增帳號別名與使用者名稱／Email；資料只保存在 Tampermonkey 的腳本儲存空間。
+2. 在登入頁新增帳號別名與使用者名稱／Email；資料只保存在 Tampermonkey 的腳本儲存空間。可儲存多筆：輸入未使用過的新別名後按「新增／更新帳號」會新增一筆；使用相同別名儲存則更新該筆使用者名稱。每次儲存後會自動重設為「選擇帳號」，避免下一筆意外覆寫目前帳號。
 3. 選擇帳號後按「填入帳號」，再由瀏覽器密碼管理器填入密碼並按「登入」。
 4. CAPTCHA、OTP 與裝置核准必須由使用者完成；外掛不嘗試繞過或記錄這些驗證資料。
 
 外掛不保存密碼、Cookie、驗證碼或 token。它的「登出並清除本站 Local Storage」按鈕會先請求確認，接著清除 `myteam.swordgale.online` 的 Local Storage 並回到 `/login`；Tampermonkey 保存的帳號別名不會刪除，且 HTTP-only Cookie 不能由 userscript 清除。
+
+## 補品異常紀錄
+
+補品消耗偵錯直接整合於 Autoy 的補品流程。正常使用不會寫入紀錄；只有 API 請求失敗、回應缺少背包／角色、重新讀取後庫存未減少，或庫存已消耗但 HP／SP 未增加時，才建立一個異常案件。案件會保存首次證據，並在 1／5／15 秒後以正常背包讀取追加驗證，不會覆寫先前資料。
+
+在目前帳號的工具列按「補品異常」可查看、複製 JSON 或清除該帳號案件。最多保留 100 件案件、每件最多 30 個時間線項目。資料與帳號 token 分開保存於 `autoy.itemRecoveryIncidents.v1`；紀錄不含 token、帳密、headers、完整 request／response 或帳號名稱。
 
 可在同一瀏覽器保存多個帳號 token；每個帳號各自保存設定、排程、冷卻與角色狀態。帳號列可分別啟動／停止，多個 token 可同時自動狩獵；切換畫面只切換檢視，不影響其他帳號。每個帳號僅使用 `selected: true` 的出戰角色，超過 4 名或狀態不明時不會呼叫狩獵 API。
 

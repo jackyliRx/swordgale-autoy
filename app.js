@@ -1,7 +1,11 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.8";
+const uiVersion = "0.7.9";
 const storeKey = "autoy.accounts.v1";
+const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
+const itemRecoveryIncidentLimit = 100;
+const itemRecoveryTimelineLimit = 30;
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
+let itemRecoveryIncidents = loadItemRecoveryIncidents();
 let activeId = accounts[0]?.id || null;
 const runtimes = new Map();
 const maxConcurrentApiRequests = 4;
@@ -270,6 +274,40 @@ function normalizeItems(payload) {
   if (Array.isArray(payload?.items)) return payload.items;
   if (Array.isArray(payload?.items?.items)) return payload.items.items;
   return null;
+}
+function loadItemRecoveryIncidents() {
+  try { const value = JSON.parse(localStorage.getItem(itemRecoveryIncidentKey) || "[]"); return Array.isArray(value) ? value.filter((entry) => entry && typeof entry === "object").slice(0, itemRecoveryIncidentLimit) : []; }
+  catch { return []; }
+}
+function saveItemRecoveryIncidents() { localStorage.setItem(itemRecoveryIncidentKey, JSON.stringify(itemRecoveryIncidents.slice(0, itemRecoveryIncidentLimit))); }
+function itemRecoverySnapshot(item) { return item ? { itemId: String(item.id), name: String(item.name || "").slice(0, 80) || null, quantity: itemQuantity(item) } : null; }
+function heroRecoverySnapshot(hero) { return hero ? { id: String(hero.id), hp: Number(hero.hp), sp: Number(hero.sp) } : null; }
+function createItemRecoveryIncident(accountId, kind, message, detail) {
+  const incident = { incidentId: crypto.randomUUID(), createdAt: new Date().toISOString(), accountRef: String(accountId), kind, status: "pending", message, timeline: [{ at: new Date().toISOString(), type: "detected", ...detail }] };
+  itemRecoveryIncidents.unshift(incident); itemRecoveryIncidents = itemRecoveryIncidents.slice(0, itemRecoveryIncidentLimit); saveItemRecoveryIncidents();
+  scheduleItemRecoveryIncidentVerification(incident.incidentId, detail.item?.itemId, accountId);
+  return incident;
+}
+function appendItemRecoveryIncident(incidentId, type, detail, status) {
+  const incident = itemRecoveryIncidents.find((entry) => entry.incidentId === incidentId);
+  if (!incident) return;
+  incident.timeline = [...incident.timeline, { at: new Date().toISOString(), type, ...detail }].slice(-itemRecoveryTimelineLimit);
+  if (status) incident.status = status;
+  saveItemRecoveryIncidents();
+  if ($("item-recovery-incidents")?.open) renderItemRecoveryIncidents();
+}
+function scheduleItemRecoveryIncidentVerification(incidentId, itemId, accountId) {
+  [1000, 5000, 15000].forEach((delay, index, delays) => window.setTimeout(async () => {
+    try {
+      const items = await refreshItems(accountId);
+      const item = (items || []).find((entry) => String(entry.id) === String(itemId));
+      appendItemRecoveryIncident(incidentId, "inventory-verification", { delayMs: delay, item: itemRecoverySnapshot(item) }, index === delays.length - 1 ? "unconfirmed" : undefined);
+    } catch (error) { appendItemRecoveryIncident(incidentId, "inventory-verification-error", { delayMs: delay, error: String(error.message || error).slice(0, 160) }, index === delays.length - 1 ? "unconfirmed" : undefined); }
+  }, delay));
+}
+function renderItemRecoveryIncidents() {
+  const incidents = itemRecoveryIncidents.filter((entry) => entry.accountRef === String(activeId));
+  $("item-recovery-incident-list").textContent = incidents.length ? JSON.stringify(incidents, null, 2) : "尚未記錄補品異常。正常補品流程不會寫入此處。";
 }
 function recoveryItems(accountId = activeId) { return runtimeFor(accountId).items.filter(isSafeRecoveryItem); }
 function itemById(itemId, accountId = activeId) { return recoveryItems(accountId).find((item) => String(item.id) === String(itemId)); }
@@ -770,16 +808,27 @@ async function tryUseRecoveryItems(c, accountId) {
       return false;
     }
     const before = { hp: hero.hp, sp: hero.sp, quantity: itemQuantity(choice.item) };
+    const beforeItem = itemRecoverySnapshot(choice.item);
+    const beforeHero = heroRecoverySnapshot(hero);
     let result;
     try { result = await request(`/items/${encodeURIComponent(choice.item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity: 1, heroId: hero.id }) }, accountId); }
-    catch (error) { log(`${hero.name} 使用 ${choice.item.name} 失敗，已自動進入休息：${error.message || error}`, accountId); return false; }
+    catch (error) {
+      createItemRecoveryIncident(accountId, "use-request-failed", "使用補品 API 請求失敗", { item: { itemId: beforeItem.itemId, before: beforeItem, response: null }, hero: { before: beforeHero, after: null }, error: String(error.message || error).slice(0, 160) });
+      log(`${hero.name} 使用 ${choice.item.name} 失敗，已自動進入休息：${error.message || error}`, accountId); return false;
+    }
     const updatedItems = normalizeItems(result.items);
-    if (!updatedItems) { log(`${hero.name} 使用 ${choice.item.name} 後未回傳可辨識的背包資料，已自動進入休息`, accountId); return false; }
+    if (!updatedItems) {
+      createItemRecoveryIncident(accountId, "inventory-missing", "使用補品成功回應未包含可辨識背包資料", { item: { itemId: beforeItem.itemId, before: beforeItem, response: null }, hero: { before: beforeHero, after: heroRecoverySnapshot(result.hero) } });
+      log(`${hero.name} 使用 ${choice.item.name} 後未回傳可辨識的背包資料，已自動進入休息`, accountId); return false;
+    }
     state.items = updatedItems; state.itemsUpdatedAt = Date.now();
     const account = accounts.find((entry) => entry.id === accountId);
     if (account) { account.itemCatalog = state.items; account.itemsUpdatedAt = state.itemsUpdatedAt; save(); }
     const updatedHero = result.hero;
-    if (!updatedHero) { log(`${hero.name} 使用 ${choice.item.name} 後未回傳角色資料，已自動進入休息`, accountId); return false; }
+    if (!updatedHero) {
+      createItemRecoveryIncident(accountId, "hero-missing", "使用補品成功回應未包含角色資料", { item: { itemId: beforeItem.itemId, before: beforeItem, response: itemRecoverySnapshot((updatedItems || []).find((item) => String(item.id) === String(choice.item.id))) }, hero: { before: beforeHero, after: null } });
+      log(`${hero.name} 使用 ${choice.item.name} 後未回傳角色資料，已自動進入休息`, accountId); return false;
+    }
     state.heroes = mergeHeroes(state.heroes, [updatedHero]);
     let afterItem = itemById(choice.item.id, accountId);
     let afterQuantity = afterItem ? itemQuantity(afterItem) : 0;
@@ -794,10 +843,14 @@ async function tryUseRecoveryItems(c, accountId) {
           if (fallback?.source === "team") { log(`${hero.name} 使用 ${choice.item.name} 未確認，下一輪改用全隊預設補品 ${fallback.item.name}`, accountId); return true; }
           state.recoveryFallbackHeroes.delete(String(hero.id));
         }
+        createItemRecoveryIncident(accountId, "inventory-not-decreased", "補品使用後重新讀取背包，庫存仍未減少", { item: { itemId: beforeItem.itemId, before: beforeItem, response: itemRecoverySnapshot((updatedItems || []).find((item) => String(item.id) === String(choice.item.id))), refresh: itemRecoverySnapshot(afterItem) }, hero: { before: beforeHero, after: heroRecoverySnapshot(updatedHero) } });
         log(`${hero.name} 使用 ${choice.item.name} 後庫存未減少；重新讀取背包後仍未扣除，已自動進入休息`, accountId); return false;
       }
     }
-    if (Number(updatedHero.hp) <= before.hp && Number(updatedHero.sp) <= before.sp) { log(`${hero.name} 使用 ${choice.item.name} 後 HP／SP 未增加，已自動進入休息`, accountId); return false; }
+    if (Number(updatedHero.hp) <= before.hp && Number(updatedHero.sp) <= before.sp) {
+      createItemRecoveryIncident(accountId, "vitals-not-increased", "補品庫存已消耗但 HP／SP 未增加", { item: { itemId: beforeItem.itemId, before: beforeItem, response: itemRecoverySnapshot(afterItem) }, hero: { before: beforeHero, after: heroRecoverySnapshot(updatedHero) } });
+      log(`${hero.name} 使用 ${choice.item.name} 後 HP／SP 未增加，已自動進入休息`, accountId); return false;
+    }
     operation(accountId, "item.used", { heroId: hero.id, heroName: hero.name, itemId: choice.item.id, itemName: choice.item.name, source: choice.source, fallback: choice.fallback === true, before, after: { hp: updatedHero.hp, sp: updatedHero.sp, quantity: afterQuantity } });
     const fallbackText = choice.fallback ? "；指定補品不可用，已改用全隊預設" : choice.source === "team" ? "；使用全隊預設" : "";
     log(`${hero.name} 使用 ${choice.item.name} × 1${fallbackText}`, accountId);
@@ -1107,6 +1160,12 @@ function initAccountEvents() {
   $("copy-operations").onclick = () => copyText(JSON.stringify(runtimeFor(activeId).operations, null, 2), "操作紀錄 JSON 已複製");
   $("open-flow").onclick = () => { renderFlowMessages(activeId); openDialog("flow-card"); };
   $("open-operations").onclick = () => { renderOperations(activeId); openDialog("operation-card"); };
+  $("open-item-recovery-incidents").onclick = () => { renderItemRecoveryIncidents(); openDialog("item-recovery-incidents"); };
+  $("copy-item-recovery-incidents").onclick = () => copyText(JSON.stringify(itemRecoveryIncidents.filter((entry) => entry.accountRef === String(activeId)), null, 2), "補品異常 JSON 已複製");
+  $("clear-item-recovery-incidents").onclick = () => {
+    if (!window.confirm("只會清除目前帳號的補品異常紀錄，不影響帳號、補品設定或操作紀錄。確定清除？")) return;
+    itemRecoveryIncidents = itemRecoveryIncidents.filter((entry) => entry.accountRef !== String(activeId)); saveItemRecoveryIncidents(); renderItemRecoveryIncidents();
+  };
   $("open-reports").onclick = () => { renderReports(activeId); openDialog("reports-dialog"); };
   $("refresh-reports").onclick = () => loadReports(activeId).catch((error) => warn(`讀取戰報列表失敗：${error.message || error}`, activeId));
   document.querySelectorAll("[data-close-dialog]").forEach((button) => button.onclick = () => button.closest("dialog")?.close());
