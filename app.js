@@ -1,11 +1,14 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.13";
+const uiVersion = "0.7.14";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
 const itemRecoveryTimelineLimit = 30;
+const forgeDebugLogKey = "autoy.forgeDebugLogs.v1";
+const forgeDebugLogLimit = 200;
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let itemRecoveryIncidents = loadItemRecoveryIncidents();
+let forgeDebugLogs = loadForgeDebugLogs();
 let activeId = accounts[0]?.id || null;
 const runtimes = new Map();
 const maxConcurrentApiRequests = 4;
@@ -19,7 +22,7 @@ const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
   if (!runtimes.has(id)) {
     const account = accounts.find((entry) => entry.id === id);
-    runtimes.set(id, { heroes: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, stopReason: null, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
+    runtimes.set(id, { heroes: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, forgeProfile: null, forgeTypes: [], forgeMines: [], forgeDataUpdatedAt: 0, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, stopReason: null, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
   }
   return runtimes.get(id);
 }
@@ -159,11 +162,11 @@ function partyDebug(party) {
 }
 function config(accountId = activeId) {
   const account = accounts.find((a) => a.id === accountId);
-  if (account?.settings) { const settings = { ...defaultSettings(), ...account.settings }; return { target: Number(settings.target), hp: Number(settings.hp), sp: Number(settings.sp), restHp: Number(settings.restHp), restSp: Number(settings.restSp), useItems: settings.useItems === true, teamItems: settings.teamItems || {}, heroItems: settings.heroItems || {}, restMinutes: Number(settings.restMinutes), alertMinutes: Number(settings.alertMinutes), flowMessages: settings.flowMessages !== false, operationLog: settings.operationLog === true, debug: settings.debug === true, itemRecoveryIncidentEnabled: settings.itemRecoveryIncidentEnabled === true }; }
-  return { target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, teamItems: {}, heroItems: {}, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked };
+  if (account?.settings) { const settings = { ...defaultSettings(), ...account.settings }; return { target: Number(settings.target), hp: Number(settings.hp), sp: Number(settings.sp), restHp: Number(settings.restHp), restSp: Number(settings.restSp), useItems: settings.useItems === true, teamItems: settings.teamItems || {}, heroItems: settings.heroItems || {}, restMinutes: Number(settings.restMinutes), alertMinutes: Number(settings.alertMinutes), flowMessages: settings.flowMessages !== false, operationLog: settings.operationLog === true, debug: settings.debug === true, itemRecoveryIncidentEnabled: settings.itemRecoveryIncidentEnabled === true, forgeDebugEnabled: settings.forgeDebugEnabled === true }; }
+  return { target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, teamItems: {}, heroItems: {}, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked };
 }
 function validConfig(c) { return Number.isInteger(c.target) && c.target > 0 && c.hp >= 1 && c.hp <= 100 && c.sp >= 1 && c.sp <= 100 && c.restHp >= c.hp && c.restHp <= 100 && c.restSp >= c.sp && c.restSp <= 100 && c.restMinutes > 0 && c.alertMinutes >= 1; }
-function defaultSettings() { return { target: 1, hp: 80, sp: 70, restHp: 90, restSp: 90, useItems: false, teamItems: {}, heroItems: {}, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false, itemRecoveryIncidentEnabled: false }; }
+function defaultSettings() { return { target: 1, hp: 80, sp: 70, restHp: 90, restSp: 90, useItems: false, teamItems: {}, heroItems: {}, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false, itemRecoveryIncidentEnabled: false, forgeDebugEnabled: false }; }
 function loadSettings(account = active()) {
   if (!account) return;
   account.settings = { ...defaultSettings(), ...(account.settings || {}) };
@@ -178,6 +181,7 @@ function loadSettings(account = active()) {
   $("operation-log").checked = account.settings.operationLog === true;
   $("debug-console").checked = account.settings.debug === true;
   $("item-recovery-incident-enabled").checked = account.settings.itemRecoveryIncidentEnabled === true;
+  $("forge-debug-enabled").checked = account.settings.forgeDebugEnabled === true;
   renderItemSettings(account.id);
 }
 function persistSettings() {
@@ -188,7 +192,7 @@ function persistSettings() {
 }
 function configFromForm() {
   const previous = active()?.settings || defaultSettings();
-  return { ...previous, target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked };
+  return { ...previous, target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked };
 }
 function clearRecoveryTimers(accountId) {
   const state = runtimeFor(accountId);
@@ -275,6 +279,84 @@ function normalizeItems(payload) {
   if (Array.isArray(payload?.items)) return payload.items;
   if (Array.isArray(payload?.items?.items)) return payload.items.items;
   return null;
+}
+function normalizeForgeMines(payload) {
+  if (Array.isArray(payload?.mines)) return payload.mines;
+  if (Array.isArray(payload?.items?.mines)) return payload.items.mines;
+  return null;
+}
+function forgeWorkshopsFromProfile(profile) {
+  const expanded = Number(profile?.forgeExpanded);
+  return Number.isInteger(expanded) && expanded >= 0 ? Array.from({ length: expanded + 1 }, (_, index) => index + 1) : [];
+}
+function forgeEligibleHeroes(heroes) {
+  return (heroes || []).filter((hero) => hero && Number(hero.hp) > 0 && hero.perished !== true && Number(hero.actionState) === 0 && Number(hero.huntZone) === 0);
+}
+function normalizeForgeTypesFromBundle(source) {
+  const types = [];
+  const seen = new Set();
+  for (const match of String(source || "").matchAll(/\{id:`([^`]+)`,name:`([^`]+)`,limit:(\d+)/g)) {
+    const [, id, name, limit] = match;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    types.push({ id, name, limit: Number(limit) });
+  }
+  return types;
+}
+async function loadLiveForgeTypes() {
+  const home = await fetch("https://myteam.swordgale.online/");
+  if (!home.ok) throw new Error(`無法讀取官方鍛造介面：${home.status}`);
+  const html = await home.text();
+  const asset = html.match(/assets\/(Forge-[^"']+\.js)/)?.[1];
+  if (!asset) throw new Error("官方鍛造介面未提供類型資料來源");
+  const response = await fetch(`https://myteam.swordgale.online/assets/${asset}`);
+  if (!response.ok) throw new Error(`無法讀取官方鍛造類型：${response.status}`);
+  const types = normalizeForgeTypesFromBundle(await response.text());
+  if (!types.length) throw new Error("官方鍛造類型資料格式無法辨識");
+  return types;
+}
+function validateForgeDraft(draft, { workshops, heroes, mines, types }) {
+  const workshop = Number(draft?.workshop);
+  if (!workshops.includes(workshop)) return { ok: false, error: "鍛造坊已不存在或尚未讀取最新清單" };
+  const hero = forgeEligibleHeroes(heroes).find((entry) => String(entry.id) === String(draft?.heroId));
+  if (!hero) return { ok: false, error: "角色目前不可鍛造；請重新讀取" };
+  const name = String(draft?.name || "").trim();
+  if (!name) return { ok: false, error: "請輸入裝備名稱" };
+  const type = (types || []).find((entry) => entry.id === draft?.type);
+  if (!type || !Number.isInteger(Number(type.limit)) || Number(type.limit) <= 0) return { ok: false, error: "裝備類型或材料上限尚未讀取" };
+  const requested = Array.isArray(draft?.selectedMines) ? draft.selectedMines : [];
+  if (!requested.length) return { ok: false, error: "請至少選擇一個材料" };
+  const merged = new Map();
+  for (const entry of requested) {
+    const itemId = String(entry?.itemId || ""); const quantity = Number(entry?.quantity);
+    if (!itemId || !Number.isInteger(quantity) || quantity <= 0) return { ok: false, error: "材料數量必須是正整數" };
+    merged.set(itemId, (merged.get(itemId) || 0) + quantity);
+  }
+  const materialTotal = [...merged.values()].reduce((sum, quantity) => sum + quantity, 0);
+  if (materialTotal > Number(type.limit)) return { ok: false, error: `材料總數 ${materialTotal} 超過 ${type.name} 上限 ${type.limit}` };
+  for (const [itemId, quantity] of merged) {
+    const mine = (mines || []).find((entry) => String(entry.id) === itemId);
+    if (!mine || Number(mine.available) < quantity) return { ok: false, error: "材料庫存不足或已失效；請重新讀取" };
+  }
+  return { ok: true, materialTotal, type, hero, selectedMines: [...merged].map(([itemId, quantity]) => ({ itemId: Number(itemId), quantity })) };
+}
+function loadForgeDebugLogs() {
+  try { const value = JSON.parse(localStorage.getItem(forgeDebugLogKey) || "[]"); return Array.isArray(value) ? value.filter((entry) => entry && typeof entry === "object").slice(0, forgeDebugLogLimit) : []; }
+  catch { return []; }
+}
+function saveForgeDebugLogs() { localStorage.setItem(forgeDebugLogKey, JSON.stringify(forgeDebugLogs.slice(0, forgeDebugLogLimit))); }
+function shouldRecordForgeDebug(settings) { return settings?.forgeDebugEnabled === true; }
+function forgeSafeDetail(value) { return safeOperationPayload(value); }
+function recordForgeDebug(accountId, event, detail = {}) {
+  if (!shouldRecordForgeDebug(config(accountId))) return;
+  forgeDebugLogs.unshift({ at: new Date().toISOString(), accountRef: String(accountId), event, ...forgeSafeDetail(detail) });
+  forgeDebugLogs = forgeDebugLogs.slice(0, forgeDebugLogLimit);
+  saveForgeDebugLogs();
+  if ($("forge-debug-dialog")?.open) renderForgeDebugLogs();
+}
+function renderForgeDebugLogs() {
+  const logs = forgeDebugLogs.filter((entry) => entry.accountRef === String(activeId));
+  $("forge-debug-log-list").textContent = logs.length ? JSON.stringify(logs, null, 2) : "尚未記錄鍛造除錯資料。勾選後才會記錄新的鍛造流程。";
 }
 function loadItemRecoveryIncidents() {
   try { const value = JSON.parse(localStorage.getItem(itemRecoveryIncidentKey) || "[]"); return Array.isArray(value) ? value.filter((entry) => entry && typeof entry === "object").slice(0, itemRecoveryIncidentLimit) : []; }
@@ -1231,13 +1313,20 @@ function initAccountEvents() {
     if (!window.confirm("只會清除目前帳號的補品異常紀錄，不影響帳號、補品設定或操作紀錄。確定清除？")) return;
     itemRecoveryIncidents = itemRecoveryIncidents.filter((entry) => entry.accountRef !== String(activeId)); saveItemRecoveryIncidents(); renderItemRecoveryIncidents();
   };
+  $("open-forge-debug").onclick = () => { renderForgeDebugLogs(); openDialog("forge-debug-dialog"); };
+  $("copy-forge-debug").onclick = () => copyText(JSON.stringify(forgeDebugLogs.filter((entry) => entry.accountRef === String(activeId)), null, 2), "鍛造除錯 JSON 已複製");
+  $("clear-forge-debug").onclick = () => {
+    if (!window.confirm("只會清除目前帳號的鍛造除錯紀錄，不影響鍛造設定、補品設定或自動狩獵。確定清除？")) return;
+    forgeDebugLogs = forgeDebugLogs.filter((entry) => entry.accountRef !== String(activeId)); saveForgeDebugLogs(); renderForgeDebugLogs();
+  };
   $("open-reports").onclick = () => { renderReports(activeId); openDialog("reports-dialog"); };
   $("refresh-reports").onclick = () => loadReports(activeId).catch((error) => warn(`讀取戰報列表失敗：${error.message || error}`, activeId));
   document.querySelectorAll("[data-close-dialog]").forEach((button) => button.onclick = () => button.closest("dialog")?.close());
-  for (const id of ["target-stage", "hp-target", "sp-target", "rest-hp-target", "rest-sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console", "item-recovery-incident-enabled"]) $(id).addEventListener("change", () => {
+  for (const id of ["target-stage", "hp-target", "sp-target", "rest-hp-target", "rest-sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console", "item-recovery-incident-enabled", "forge-debug-enabled"]) $(id).addEventListener("change", () => {
     persistSettings();
     if (id === "flow-messages" && $("flow-messages").checked) log("已啟用流程訊息", activeId);
     if (id === "operation-log" && $("operation-log").checked) operation(activeId, "operation-log.enabled", { message: "使用者啟用操作紀錄" });
+    if (id === "forge-debug-enabled" && $("forge-debug-enabled").checked) recordForgeDebug(activeId, "debug.enabled", { message: "使用者啟用鍛造除錯紀錄" });
     renderFlowMessages(activeId); renderOperations(activeId);
   });
 }
