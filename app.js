@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.30";
+const uiVersion = "0.7.31";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -325,6 +325,8 @@ function loadStoredForgeTypes() {
     { id: "helmet",  name: "頭盔",   limit: 16 },
     { id: "hat",     name: "帽子",   limit: 10 },
     { id: "armor",   name: "盔甲",   limit: 16 },
+    { id: "coat",    name: "大衣",   limit: 12 },
+    { id: "necklace",name: "項鍊",   limit: 6  },
   ];
 }
 function validateForgeDraft(draft, { workshops, heroes, mines, types }) {
