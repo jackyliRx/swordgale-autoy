@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.9";
+const uiVersion = "0.8.10";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -505,7 +505,7 @@ function renderForgeSettings(accountId = activeId) {
     const w = parseInt(t.dataset.forgeJobEnabled ?? t.dataset.forgeHero ?? t.dataset.forgeType ?? t.dataset.forgeRecovery ?? t.dataset.forgeCopy ?? "");
     if (!w) return;
     const draft = forgeDraftForWorkshop(accountId, w);
-    if (t.dataset.forgeJobEnabled !== undefined) { draft.enabled = t.checked; if (t.checked) forgeWorkshopErrors.delete(`${accountId}:${w}`); saveForgeDraft(accountId, draft); renderForgeSettings(accountId); }
+    if (t.dataset.forgeJobEnabled !== undefined) { draft.enabled = t.checked; if (t.checked) forgeWorkshopErrors.delete(`${accountId}:${w}`); saveForgeDraft(accountId, draft); renderForgeSettings(accountId); if (t.checked && runtimeFor(accountId).forgeRunning) forgeSchedule(1000, accountId); }
     else if (t.dataset.forgeHero !== undefined) { draft.heroId = t.value; saveForgeDraft(accountId, draft); }
     else if (t.dataset.forgeType !== undefined) { draft.type = t.value; saveForgeDraft(accountId, draft); }
     else if (t.dataset.forgeRecovery !== undefined) { draft.recoveryItemId = t.value; saveForgeDraft(accountId, draft); }
