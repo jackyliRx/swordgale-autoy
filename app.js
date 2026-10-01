@@ -313,6 +313,7 @@ function normalizeForgeTypesFromBundle(source) {
 }
 const forgeExpandedMap = new Map();
 const forgeCompleteFailures = new Map();
+const forgeWorkshopErrors = new Map();
 const FORGE_COMPLETE_SKIP_THRESHOLD = 1;
 function forgeExpanded(accountId) { if (!forgeExpandedMap.has(accountId)) forgeExpandedMap.set(accountId, new Set()); return forgeExpandedMap.get(accountId); }
 const MINE_CATEGORY_IDS = {
@@ -368,11 +369,14 @@ function validateForgeDraft(draft, { workshops, heroes, mines, types }) {
   }
   return { ok: true, materialTotal, type, hero, selectedMines: [...merged].map(([itemId, quantity]) => ({ itemId: Number(itemId), quantity })) };
 }
-function nextForgeAction({ workshops, heroes, drafts, skippedHeroIds = new Set() }) {
-  // 1. 先完成可完成的鍛造（跳過多次失敗的卡死英雄）
+function nextForgeAction({ workshops, heroes, drafts, skippedHeroIds = new Set(), enabledCompleteOnly = false }) {
+  // 1. 先完成可完成的鍛造（跳過卡死英雄；boot scan 後只對勾選坊完成）
   for (const hero of heroes || []) {
     const as = Number(hero.actionState);
-    if (as === 4 && hero.canComplete === true && !skippedHeroIds.has(String(hero.id))) return { kind: "complete", workshop: Number(hero.actionTarget), heroId: hero.id };
+    if (as === 4 && hero.canComplete === true && !skippedHeroIds.has(String(hero.id))) {
+      if (enabledCompleteOnly && !(drafts?.[Number(hero.actionTarget)]?.enabled === true)) continue;
+      return { kind: "complete", workshop: Number(hero.actionTarget), heroId: hero.id };
+    }
   }
   // 2. 收集佔用中的鍛造坊，找最近完成時間
   const occupiedWorkshops = new Set();
@@ -474,6 +478,7 @@ function renderForgeSettings(accountId = activeId) {
   const groupedMineOptions = MINE_ORDER.filter((cat) => mineGroups[cat]).map((cat) => `<optgroup label="${cat}">${mineGroups[cat].map((mine) => `<option value="${safe(mine.id)}">${safe(mine.name)}（${Number(mine.available)}）</option>`).join("")}</optgroup>`).join("");
   const workshopCards = workshops.map((w) => {
     const draft = forgeDraftForWorkshop(accountId, w);
+    const workshopError = forgeWorkshopErrors.get(`${accountId}:${w}`);
     const active = activeForges.get(w);
     const forgingHeroOption = active && !eligibleHeroes.some((h) => String(h.id) === String(active.id)) ? `<option value="${safe(active.id)}" ${String(draft.heroId) === String(active.id) ? "selected" : ""}>${safe(active.name)}（鍛造中）</option>` : "";
     const heroOptions = `<option value="">未選擇</option>${forgingHeroOption}${eligibleHeroes.map((h) => `<option value="${safe(h.id)}" ${String(draft.heroId) === String(h.id) ? "selected" : ""}>${safe(h.name)}</option>`).join("")}`;
@@ -483,7 +488,7 @@ function renderForgeSettings(accountId = activeId) {
     const selectedList = (draft.selectedMines || []).map((entry, idx) => { const mine = state.forgeMines.find((m) => String(m.id) === String(entry.itemId)); return `<li>${safe(mine?.name || "已失效材料")} × ${Number(entry.quantity)} <button type="button" data-forge-remove="${w}-${idx}">移除</button></li>`; }).join("") || "<li>尚未選擇材料。</li>";
     const statusText = active ? `▶ ${safe(active.name)} 鍛造中${active.actionCompleteTime ? `，預計完成 ${new Date(active.actionCompleteTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}` : "";
     const collapsed = !forgeExpanded(accountId).has(w);
-    return `<div class="forge-workshop-card${collapsed ? " collapsed" : ""}" data-w="${w}"><div class="forge-workshop-header"><label class="forge-workshop-header-label"><input type="checkbox" data-forge-job-enabled="${w}" ${draft.enabled ? "checked" : ""} /><strong>鍛造坊 ${w}</strong></label>${statusText ? `<span class="forge-workshop-status">${statusText}</span>` : ""}<button type="button" data-forge-toggle="${w}" class="forge-toggle-btn" aria-label="展開或收合">▲</button></div><div class="forge-workshop-settings"><label class="forge-copy-row">從其他鍛造坊複製<select data-forge-copy="${w}">${copyOpts}</select></label><label>選擇角色<select data-forge-hero="${w}">${heroOptions}</select></label><label>裝備名稱<input data-forge-name="${w}" maxlength="40" value="${safe(draft.name)}" /></label><label>裝備類型<select data-forge-type="${w}">${typeOptions}</select></label><label>完成後 SP 補品<select data-forge-recovery="${w}">${recoveryOpts}</select></label><div class="forge-material-section"><strong>選擇材料</strong><div class="forge-material-add"><label>材料<select data-forge-material="${w}">${groupedMineOptions}</select></label><label>數量<input data-forge-qty="${w}" type="number" min="1" value="1" /></label><button type="button" data-forge-add="${w}">加入</button></div><ul>${selectedList}</ul></div></div></div>`;
+    return `<div class="forge-workshop-card${collapsed ? " collapsed" : ""}" data-w="${w}"><div class="forge-workshop-header"><label class="forge-workshop-header-label"><input type="checkbox" data-forge-job-enabled="${w}" ${draft.enabled ? "checked" : ""} /><strong>鍛造坊 ${w}</strong>${workshopError ? ` <span class="forge-workshop-error">⚠ ${safe(workshopError)}</span>` : ""}</label>${statusText ? `<span class="forge-workshop-status">${statusText}</span>` : ""}<button type="button" data-forge-toggle="${w}" class="forge-toggle-btn" aria-label="展開或收合">▲</button></div><div class="forge-workshop-settings"><label class="forge-copy-row">從其他鍛造坊複製<select data-forge-copy="${w}">${copyOpts}</select></label><label>選擇角色<select data-forge-hero="${w}">${heroOptions}</select></label><label>裝備名稱<input data-forge-name="${w}" maxlength="40" value="${safe(draft.name)}" /></label><label>裝備類型<select data-forge-type="${w}">${typeOptions}</select></label><label>完成後 SP 補品<select data-forge-recovery="${w}">${recoveryOpts}</select></label><div class="forge-material-section"><strong>選擇材料</strong><div class="forge-material-add"><label>材料<select data-forge-material="${w}">${groupedMineOptions}</select></label><label>數量<input data-forge-qty="${w}" type="number" min="1" value="1" /></label><button type="button" data-forge-add="${w}">加入</button></div><ul>${selectedList}</ul></div></div></div>`;
   }).join("");
   const allExpanded = workshops.every((w) => forgeExpanded(accountId).has(w));
   panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">${state.forgeRunning ? "自動鍛造執行中；不影響自動狩獵。" : "每個鍛造坊保存各自的角色、名稱、類型、材料與 SP 補品。"}</p></div><div class="forge-heading-actions"><button type="button" id="forge-toggle-all">${allExpanded ? "全部收合" : "全部展開"}</button><label class="checkbox-setting"><input id="forge-enabled" type="checkbox" ${account.settings?.forgeEnabled === true ? "checked" : ""} /> 啟用此帳號自動鍛造</label></div></div>${workshopCards}<p class="hint">更新時間：${safe(new Date(state.forgeDataUpdatedAt).toLocaleTimeString())}。每次開始與完成前都會重新讀取並驗證；不確定寫入結果時只重讀、不重送。</p>`;
@@ -500,7 +505,7 @@ function renderForgeSettings(accountId = activeId) {
     const w = parseInt(t.dataset.forgeJobEnabled ?? t.dataset.forgeHero ?? t.dataset.forgeType ?? t.dataset.forgeRecovery ?? t.dataset.forgeCopy ?? "");
     if (!w) return;
     const draft = forgeDraftForWorkshop(accountId, w);
-    if (t.dataset.forgeJobEnabled !== undefined) { draft.enabled = t.checked; saveForgeDraft(accountId, draft); renderForgeSettings(accountId); }
+    if (t.dataset.forgeJobEnabled !== undefined) { draft.enabled = t.checked; if (t.checked) forgeWorkshopErrors.delete(`${accountId}:${w}`); saveForgeDraft(accountId, draft); renderForgeSettings(accountId); }
     else if (t.dataset.forgeHero !== undefined) { draft.heroId = t.value; saveForgeDraft(accountId, draft); }
     else if (t.dataset.forgeType !== undefined) { draft.type = t.value; saveForgeDraft(accountId, draft); }
     else if (t.dataset.forgeRecovery !== undefined) { draft.recoveryItemId = t.value; saveForgeDraft(accountId, draft); }
@@ -584,7 +589,7 @@ function setForgeEnabled(accountId, enabled) {
   save();
   if (enabled) {
     const state = runtimeFor(accountId);
-    if (!state.forgeRunning) { state.forgeRunning = true; state.forgeBusy = false; for (const k of [...forgeCompleteFailures.keys()]) { if (k.startsWith(accountId + ":")) forgeCompleteFailures.delete(k); } recordForgeDebug(accountId, "forge.runner.started"); forgeSchedule(1, accountId); }
+    if (!state.forgeRunning) { state.forgeRunning = true; state.forgeBusy = false; state.forgeBootScanned = false; for (const k of [...forgeCompleteFailures.keys()]) { if (k.startsWith(accountId + ":")) forgeCompleteFailures.delete(k); } recordForgeDebug(accountId, "forge.runner.started"); forgeSchedule(1, accountId); }
   } else stopForgeRunner(accountId);
   if (accountId === activeId) renderForgeSettings(accountId);
 }
@@ -628,7 +633,9 @@ async function forgeTurn(accountId) {
     const workshops = forgeWorkshopsFromProfile(state.forgeProfile);
     const drafts = forgeDrafts(accountId, workshops);
     const skippedCompleteHeroes = new Set([...forgeCompleteFailures.entries()].filter(([k, v]) => k.startsWith(accountId + ":") && v >= FORGE_COMPLETE_SKIP_THRESHOLD).map(([k]) => k.slice(accountId.length + 1)));
-    const action = nextForgeAction({ workshops, heroes: state.heroes, drafts, skippedHeroIds: skippedCompleteHeroes });
+    const enabledCompleteOnly = state.forgeBootScanned === true;
+    const action = nextForgeAction({ workshops, heroes: state.heroes, drafts, skippedHeroIds: skippedCompleteHeroes, enabledCompleteOnly });
+    if (!state.forgeBootScanned && action.kind !== "complete") state.forgeBootScanned = true;
     recordForgeDebug(accountId, "forge.turn.action", { kind: action.kind, heroId: action.heroId ?? null, workshop: action.workshop ?? null, actionCompleteTime: action.actionCompleteTime ?? null, ...(skippedCompleteHeroes.size ? { skippedCompleteHeroes: [...skippedCompleteHeroes] } : {}) });
     if (action.kind === "wait") { recordForgeDebug(accountId, "forge.wait", { workshop: action.workshop, waitMs: forgeWaitMs(action.actionCompleteTime) }); forgeSchedule(forgeWaitMs(action.actionCompleteTime), accountId); return; }
     if (action.kind === "complete") {
@@ -660,8 +667,11 @@ async function forgeTurn(accountId) {
         const draft = drafts[workshop];
         if (!draft?.enabled) continue;
         const validated = validateForgeDraft(draft, { workshops, heroes: state.heroes, mines: state.forgeMines, types: state.forgeTypes });
-        if (validated.ok) { candidate = { workshop, draft, validated }; break; }
-        recordForgeDebug(accountId, "forge.start.skipped", { workshop: Number(workshop), heroId: String(draft.heroId || ""), reason: validated.error });
+        if (validated.ok) { forgeWorkshopErrors.delete(`${accountId}:${workshop}`); candidate = { workshop, draft, validated }; break; }
+        forgeWorkshopErrors.set(`${accountId}:${workshop}`, validated.error);
+        saveForgeDraft(accountId, { ...draft, enabled: false });
+        recordForgeDebug(accountId, "forge.start.auto-disabled", { workshop: Number(workshop), heroId: String(draft.heroId || ""), reason: validated.error });
+        if (accountId === activeId) renderForgeSettings(accountId);
       }
       if (!candidate) { recordForgeDebug(accountId, "forge.start.no-candidate", {}); forgeSchedule(30000, accountId); return; }
       const { workshop, draft, validated } = candidate;
@@ -672,6 +682,7 @@ async function forgeTurn(accountId) {
         const hero = state.heroes.find((entry) => String(entry.id) === String(validated.hero.id));
         if (!hero || (Number(hero.actionState) !== 4 && Number(hero.actionState) !== 5) || Number(hero.actionTarget) !== Number(workshop)) throw new Error("開始鍛造後最新狀態未確認派工");
         recordForgeDebug(accountId, "forge.start.confirmed", { workshop: Number(workshop), heroId: validated.hero.id, type: validated.type.id, materialTotal: validated.materialTotal });
+        forgeWorkshopErrors.delete(`${accountId}:${workshop}`);
         forgeSchedule(2000, accountId);
       } catch (error) { await refreshForgeAfterUncertainWrite(accountId, "forge.start.write", error, { workshop: Number(workshop), heroId: validated.hero.id }); if (state.forgeRunning) forgeSchedule(30000, accountId); }
       return;
