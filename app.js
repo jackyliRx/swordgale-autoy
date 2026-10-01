@@ -605,6 +605,30 @@ async function refreshForgeAfterUncertainWrite(accountId, event, error, extra = 
   try { await refreshForgeData(accountId); }
   catch (refreshError) { recordForgeDebug(accountId, `${event}.refresh-failed`, { error: String(refreshError?.message || refreshError).slice(0, 160) }); }
 }
+async function fillForgeHeroSp(accountId, workshop, hero) {
+  const draft = forgeDraftForWorkshop(accountId, workshop);
+  const item = draft.recoveryItemId ? itemById(draft.recoveryItemId, accountId) : null;
+  if (!item) return;
+  let used = 0;
+  while (true) {
+    const currentHero = state.heroes.find((h) => String(h.id) === String(hero.id));
+    if (!currentHero || Number(currentHero.sp) >= Number(currentHero.fullSp)) break;
+    const latestItem = itemById(item.id, accountId);
+    if (!latestItem || itemQuantity(latestItem) <= 0) break;
+    try {
+      await request(`/items/${encodeURIComponent(item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity: 1, heroId: hero.id }) }, accountId);
+      await refreshForgeData(accountId);
+      used++;
+    } catch (error) {
+      await refreshForgeAfterUncertainWrite(accountId, "forge.prefill-sp.write", error);
+      break;
+    }
+  }
+  if (used > 0) {
+    recordForgeDebug(accountId, "forge.prefill-sp.completed", { workshop: Number(workshop), used });
+    log(`鍛造坊 ${workshop} 開始前補充 SP（${used} 件）`, accountId);
+  }
+}
 async function useForgeRecoveryItem(accountId, workshop, hero) {
   if (Number(hero.sp) > 0 || Number(hero.fullSp) <= 0 || Number(hero.sp) >= Number(hero.fullSp)) return;
   const draft = forgeDraftForWorkshop(accountId, workshop);
@@ -681,10 +705,13 @@ async function forgeTurn(accountId) {
       const { workshop, draft, validated } = candidate;
       recordForgeDebug(accountId, "forge.start.attempt", { workshop: Number(workshop), heroId: validated.hero.id, type: validated.type.id, typeName: validated.type.name, materialTotal: validated.materialTotal, selectedMines: validated.selectedMines });
       try {
+        const heroBeforeStart = state.heroes.find((h) => String(h.id) === String(validated.hero.id));
+        if (heroBeforeStart) await fillForgeHeroSp(accountId, workshop, heroBeforeStart);
+        if (!state.forgeRunning) return;
         await request("/forge", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ heroId: validated.hero.id, target: Number(workshop), name: draft.name.trim(), type: draft.type, selectedMines: validated.selectedMines }) }, accountId);
         await refreshForgeData(accountId);
         const hero = state.heroes.find((entry) => String(entry.id) === String(validated.hero.id));
-        if (!hero || (Number(hero.actionState) !== 4 && Number(hero.actionState) !== 5) || Number(hero.actionTarget) !== Number(workshop)) throw new Error("開始鍛造後最新狀態未確認派工");
+        if (!hero || Number(hero.actionState) !== 5 || Number(hero.actionTarget) !== Number(workshop)) throw new Error("開始鍛造後最新狀態未確認派工");
         recordForgeDebug(accountId, "forge.start.confirmed", { workshop: Number(workshop), heroId: validated.hero.id, type: validated.type.id, materialTotal: validated.materialTotal });
         forgeWorkshopErrors.delete(`${accountId}:${workshop}`);
         log(`鍛造坊 ${workshop} 開始鍛造（${safe(validated.type.name)}，材料 ${validated.materialTotal} 件）`, accountId);
