@@ -611,7 +611,7 @@ async function fillForgeHeroSp(accountId, workshop, hero) {
   if (!item) return;
   let used = 0;
   while (true) {
-    const currentHero = state.heroes.find((h) => String(h.id) === String(hero.id));
+    const currentHero = runtimeFor(accountId).heroes.find((h) => String(h.id) === String(hero.id));
     if (!currentHero || Number(currentHero.sp) >= Number(currentHero.fullSp)) break;
     const latestItem = itemById(item.id, accountId);
     if (!latestItem || itemQuantity(latestItem) <= 0) break;
