@@ -311,6 +311,16 @@ function normalizeForgeTypesFromBundle(source) {
   }
   return types;
 }
+const MINE_CATEGORY_IDS = {
+  "土石": new Set([665237, 975783, 803143, 877651, 330988, 596572, 332972, 877655, 9028823, 1289756, 803142, 803146]),
+  "木材": new Set([725814, 725812, 725813, 725810, 725811, 2250967]),
+  "金屬": new Set([725314, 610438, 9779855, 14649851, 975784, 725313, 2414045, 803144, 3253369, 2901310, 9779854]),
+  "狩獵": new Set([13052, 13403, 88188, 682725, 816696, 312661, 312319, 312662, 2589597, 2581342, 5766778, 5924337, 5743224, 790642, 5831806, 12612369]),
+};
+function mineCategory(id) {
+  for (const [cat, ids] of Object.entries(MINE_CATEGORY_IDS)) { if (ids.has(Number(id))) return cat; }
+  return "其他";
+}
 function loadStoredForgeTypes() {
   return [
     { id: "sword",   name: "單手劍", limit: 16 },
@@ -407,24 +417,6 @@ async function refreshForgeData(accountId = activeId) {
   state.forgeMines = normalizeForgeMines(itemsPayload) || [];
   state.forgeTypes = types;
   state.forgeDataUpdatedAt = Date.now();
-  const workshops = forgeWorkshopsFromProfile(profile);
-  const heroes = forgeEligibleHeroes(state.heroes);
-  state.forgeDraft.workshop = workshops.includes(Number(state.forgeDraft.workshop)) ? Number(state.forgeDraft.workshop) : workshops[0] || 1;
-  const saved = forgeDraftForWorkshop(accountId, state.forgeDraft.workshop);
-  state.forgeDraft = { ...state.forgeDraft, ...saved, workshop: state.forgeDraft.workshop };
-  const forgingHeroes = (state.heroes || []).filter((h) => { const as = Number(h.actionState); return (as === 4 || as === 5) && h.actionTarget != null; });
-  const currentHasForge = forgingHeroes.some((h) => Number(h.actionTarget) === state.forgeDraft.workshop);
-  const currentHasSettings = Boolean(state.forgeDraft.heroId) || state.forgeDraft.selectedMines.length > 0;
-  if (!currentHasForge && !currentHasSettings && forgingHeroes.length > 0) {
-    const firstTarget = Number(forgingHeroes[0].actionTarget);
-    if (workshops.includes(firstTarget)) {
-      state.forgeDraft.workshop = firstTarget;
-      const activeSaved = forgeDraftForWorkshop(accountId, firstTarget);
-      state.forgeDraft = { ...state.forgeDraft, ...activeSaved, workshop: firstTarget };
-    }
-  }
-  if (!state.forgeDraft.heroId) state.forgeDraft.heroId = String(heroes[0]?.id || "");
-  if (!state.forgeDraft.type) state.forgeDraft.type = types[0]?.id || "";
   recordForgeDebug(accountId, "forge-data.refresh.completed", { workshops: forgeWorkshopsFromProfile(profile).length, typeCount: types.length, eligibleHeroCount: forgeEligibleHeroes(state.heroes).length, mineCount: state.forgeMines.length });
   if (accountId === activeId) { renderHeroes(accountId); renderForgeSettings(); }
   return state;
@@ -450,25 +442,85 @@ function renderForgeSettings(accountId = activeId) {
   const state = runtimeFor(accountId);
   if (!account) return;
   if (!state.forgeDataUpdatedAt) {
-    panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">按「重新讀取」以載入鍛造坊資料。</p></div></div><div class="item-grid"><fieldset disabled><label>選擇鍛造坊<select><option>等待讀取</option></select></label><label>選擇角色<select><option>等待讀取</option></select></label><label>裝備名稱<input value="等待讀取" /></label><label>裝備類型<select><option>等待讀取</option></select></label></fieldset><fieldset disabled><strong>選擇材料</strong><label>材料<select><option>等待讀取</option></select></label><label>數量<input value="1" /></label></fieldset></div><label class="checkbox-setting"><input id="forge-enabled" type="checkbox" disabled /> 啟用此帳號自動鍛造（需先完成至少一個鍛造坊排程）</label>`;
+    panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">按「重新讀取」以載入鍛造坊資料。</p></div></div><label class="checkbox-setting"><input id="forge-enabled" type="checkbox" disabled /> 啟用此帳號自動鍛造（需先完成至少一個鍛造坊排程）</label>`;
     return;
   }
   const workshops = forgeWorkshopsFromProfile(state.forgeProfile);
-  const heroes = forgeEligibleHeroes(state.heroes);
-  const draft = state.forgeDraft;
+  const eligibleHeroes = forgeEligibleHeroes(state.heroes);
   const activeForges = new Map();
   for (const hero of state.heroes || []) { const as = Number(hero.actionState); if ((as === 4 || as === 5) && hero.actionTarget != null) activeForges.set(Number(hero.actionTarget), hero); }
-  const currentActive = activeForges.get(Number(draft.workshop));
-  const materialOptions = state.forgeMines.filter((mine) => Number(mine.available) > 0).map((mine) => `<option value="${safe(mine.id)}">${safe(mine.name)}（${Number(mine.available)}）</option>`).join("");
-  const recoveryOptions = [`<option value="">不使用 SP 補品</option>`].concat(recoveryItems(accountId).map((item) => `<option value="${safe(item.id)}" ${String(draft.recoveryItemId) === String(item.id) ? "selected" : ""}>${safe(itemLabel(item))}</option>`)).join("");
-  const selected = (draft.selectedMines || []).map((entry, index) => { const mine = state.forgeMines.find((candidate) => String(candidate.id) === String(entry.itemId)); return `<li>${safe(mine?.name || "已失效材料")} × ${Number(entry.quantity)} <button type="button" data-forge-remove-material="${index}">移除</button></li>`; }).join("") || "<li>尚未選擇材料。</li>";
-  panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">${state.forgeRunning ? "自動鍛造執行中；不影響自動狩獵。" : "每個鍛造坊保存各自的角色、名稱、類型、材料與 SP 補品。"}</p></div><label class="checkbox-setting"><input id="forge-enabled" type="checkbox" ${account.settings?.forgeEnabled === true ? "checked" : ""} /> 啟用此帳號自動鍛造</label></div><div class="item-grid"><div><label>選擇鍛造坊<select id="forge-workshop">${workshops.map((target) => { const af = activeForges.get(target); return `<option value="${target}" ${Number(draft.workshop) === target ? "selected" : ""}>${safe(af ? `鍛造坊 ${target} ─ ${af.name}` : `鍛造坊 ${target}`)}</option>`; }).join("")}</select></label>${currentActive ? `<p class="hint">▶ ${safe(currentActive.name)} 鍛造中${currentActive.actionCompleteTime ? `，預計完成 ${new Date(currentActive.actionCompleteTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}</p>` : ""}<label class="checkbox-setting"><input id="forge-job-enabled" type="checkbox" ${draft.enabled ? "checked" : ""} /> 此鍛造坊排程</label><label>選擇角色<select id="forge-hero"><option value="">未選擇</option>${currentActive && !heroes.some((h) => String(h.id) === String(currentActive.id)) ? `<option value="${safe(currentActive.id)}" ${String(draft.heroId) === String(currentActive.id) ? "selected" : ""}>${safe(currentActive.name)}（鍛造中）</option>` : ""}${heroes.map((hero) => `<option value="${safe(hero.id)}" ${String(draft.heroId) === String(hero.id) ? "selected" : ""}>${safe(hero.name)}</option>`).join("")}</select></label><label>裝備名稱<input id="forge-name" maxlength="40" value="${safe(draft.name)}" /></label><label>裝備類型<select id="forge-type">${state.forgeTypes.map((type) => `<option value="${safe(type.id)}" ${draft.type === type.id ? "selected" : ""}>${safe(type.name)}（材料上限 ${Number(type.limit)}）</option>`).join("")}</select></label><label>完成後 SP 補品<select id="forge-recovery-item">${recoveryOptions}</select></label></div><div><strong>選擇材料</strong><label>材料<select id="forge-material">${materialOptions}</select></label><label>數量<input id="forge-material-quantity" type="number" min="1" value="1" /></label><button id="forge-add-material" type="button">加入材料</button><ul id="forge-selected-materials">${selected}</ul></div></div><p class="hint">更新時間：${safe(new Date(state.forgeDataUpdatedAt).toLocaleTimeString())}。每次開始與完成前都會重新讀取並驗證；不確定寫入結果時只重讀、不重送。</p>`;
-  const persistDraft = () => saveForgeDraft(accountId, state.forgeDraft);
+  const availableMines = state.forgeMines.filter((mine) => Number(mine.available) > 0);
+  const MINE_ORDER = ["土石", "木材", "金屬", "狩獵", "其他"];
+  const mineGroups = {};
+  for (const mine of availableMines) { const cat = mineCategory(Number(mine.id)); (mineGroups[cat] = mineGroups[cat] || []).push(mine); }
+  const groupedMineOptions = MINE_ORDER.filter((cat) => mineGroups[cat]).map((cat) => `<optgroup label="${cat}">${mineGroups[cat].map((mine) => `<option value="${safe(mine.id)}">${safe(mine.name)}（${Number(mine.available)}）</option>`).join("")}</optgroup>`).join("");
+  const workshopCards = workshops.map((w) => {
+    const draft = forgeDraftForWorkshop(accountId, w);
+    const active = activeForges.get(w);
+    const forgingHeroOption = active && !eligibleHeroes.some((h) => String(h.id) === String(active.id)) ? `<option value="${safe(active.id)}" ${String(draft.heroId) === String(active.id) ? "selected" : ""}>${safe(active.name)}（鍛造中）</option>` : "";
+    const heroOptions = `<option value="">未選擇</option>${forgingHeroOption}${eligibleHeroes.map((h) => `<option value="${safe(h.id)}" ${String(draft.heroId) === String(h.id) ? "selected" : ""}>${safe(h.name)}</option>`).join("")}`;
+    const typeOptions = state.forgeTypes.map((t) => `<option value="${safe(t.id)}" ${draft.type === t.id ? "selected" : ""}>${safe(t.name)}（材料上限 ${Number(t.limit)}）</option>`).join("");
+    const recoveryOpts = [`<option value="">不使用 SP 補品</option>`].concat(recoveryItems(accountId).map((item) => `<option value="${safe(item.id)}" ${String(draft.recoveryItemId) === String(item.id) ? "selected" : ""}>${safe(itemLabel(item))}</option>`)).join("");
+    const copyOpts = [`<option value="">從其他工坊複製設定</option>`].concat(workshops.filter((ow) => ow !== w).map((ow) => `<option value="${ow}">工坊 ${ow}</option>`)).join("");
+    const selectedList = (draft.selectedMines || []).map((entry, idx) => { const mine = state.forgeMines.find((m) => String(m.id) === String(entry.itemId)); return `<li>${safe(mine?.name || "已失效材料")} × ${Number(entry.quantity)} <button type="button" data-forge-remove="${w}-${idx}">移除</button></li>`; }).join("") || "<li>尚未選擇材料。</li>";
+    const statusHint = active ? `<p class="hint">▶ ${safe(active.name)} 鍛造中${active.actionCompleteTime ? `，預計完成 ${new Date(active.actionCompleteTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}</p>` : "";
+    return `<div class="forge-workshop-card"><label class="forge-workshop-header"><input type="checkbox" data-forge-job-enabled="${w}" ${draft.enabled ? "checked" : ""} /><strong>工坊 ${w}</strong></label>${statusHint}<div class="forge-workshop-settings"><label class="forge-copy-row">從其他工坊複製<select data-forge-copy="${w}">${copyOpts}</select></label><label>選擇角色<select data-forge-hero="${w}">${heroOptions}</select></label><label>裝備名稱<input data-forge-name="${w}" maxlength="40" value="${safe(draft.name)}" /></label><label>裝備類型<select data-forge-type="${w}">${typeOptions}</select></label><label>完成後 SP 補品<select data-forge-recovery="${w}">${recoveryOpts}</select></label><div class="forge-material-section"><strong>選擇材料</strong><div class="forge-material-add"><label>材料<select data-forge-material="${w}">${groupedMineOptions}</select></label><label>數量<input data-forge-qty="${w}" type="number" min="1" value="1" /></label><button type="button" data-forge-add="${w}">加入</button></div><ul>${selectedList}</ul></div></div></div>`;
+  }).join("");
+  panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">${state.forgeRunning ? "自動鍛造執行中；不影響自動狩獵。" : "每個鍛造坊保存各自的角色、名稱、類型、材料與 SP 補品。"}</p></div><label class="checkbox-setting"><input id="forge-enabled" type="checkbox" ${account.settings?.forgeEnabled === true ? "checked" : ""} /> 啟用此帳號自動鍛造</label></div>${workshopCards}<p class="hint">更新時間：${safe(new Date(state.forgeDataUpdatedAt).toLocaleTimeString())}。每次開始與完成前都會重新讀取並驗證；不確定寫入結果時只重讀、不重送。</p>`;
   $("forge-enabled").onchange = () => setForgeEnabled(accountId, $("forge-enabled").checked);
-  $("forge-workshop").onchange = () => { persistDraft(); state.forgeDraft = forgeDraftForWorkshop(accountId, Number($("forge-workshop").value)); renderForgeSettings(accountId); };
-  for (const [id, key] of [["forge-job-enabled", "enabled"], ["forge-hero", "heroId"], ["forge-name", "name"], ["forge-type", "type"], ["forge-recovery-item", "recoveryItemId"]]) $(id).onchange = () => { state.forgeDraft[key] = key === "enabled" ? $(id).checked : $(id).value; persistDraft(); renderForgeSettings(accountId); };
-  $("forge-add-material").onclick = () => { const itemId = $("forge-material").value; const quantity = Number($("forge-material-quantity").value); if (!itemId || !Number.isInteger(quantity) || quantity <= 0) return; state.forgeDraft.selectedMines = [...state.forgeDraft.selectedMines, { itemId, quantity }]; persistDraft(); renderForgeSettings(accountId); };
-  panel.querySelectorAll("[data-forge-remove-material]").forEach((button) => button.onclick = () => { state.forgeDraft.selectedMines.splice(Number(button.dataset.forgeRemoveMaterial), 1); persistDraft(); renderForgeSettings(accountId); });
+  panel.onchange = (e) => {
+    if (e.target.id === "forge-enabled") return;
+    const t = e.target;
+    const w = parseInt(t.dataset.forgeJobEnabled ?? t.dataset.forgeHero ?? t.dataset.forgeType ?? t.dataset.forgeRecovery ?? t.dataset.forgeCopy ?? "");
+    if (!w) return;
+    const draft = forgeDraftForWorkshop(accountId, w);
+    if (t.dataset.forgeJobEnabled !== undefined) { draft.enabled = t.checked; saveForgeDraft(accountId, draft); renderForgeSettings(accountId); }
+    else if (t.dataset.forgeHero !== undefined) { draft.heroId = t.value; saveForgeDraft(accountId, draft); }
+    else if (t.dataset.forgeType !== undefined) { draft.type = t.value; saveForgeDraft(accountId, draft); }
+    else if (t.dataset.forgeRecovery !== undefined) { draft.recoveryItemId = t.value; saveForgeDraft(accountId, draft); }
+    else if (t.dataset.forgeCopy !== undefined) {
+      const src = parseInt(t.value);
+      if (!src) return;
+      const src_draft = forgeDraftForWorkshop(accountId, src);
+      Object.assign(draft, { heroId: src_draft.heroId, name: src_draft.name, type: src_draft.type, selectedMines: src_draft.selectedMines.map((e) => ({ ...e })), recoveryItemId: src_draft.recoveryItemId });
+      saveForgeDraft(accountId, draft);
+      t.value = "";
+      renderForgeSettings(accountId);
+    }
+  };
+  panel.oninput = (e) => {
+    const w = parseInt(e.target.dataset.forgeName ?? "");
+    if (!w) return;
+    const draft = forgeDraftForWorkshop(accountId, w);
+    draft.name = e.target.value;
+    saveForgeDraft(accountId, draft);
+  };
+  panel.onclick = (e) => {
+    const t = e.target;
+    if (t.dataset.forgeAdd !== undefined) {
+      const w = parseInt(t.dataset.forgeAdd);
+      const matSel = panel.querySelector(`[data-forge-material="${w}"]`);
+      const qtySel = panel.querySelector(`[data-forge-qty="${w}"]`);
+      if (!matSel || !qtySel) return;
+      const itemId = matSel.value;
+      const quantity = parseInt(qtySel.value);
+      if (!itemId || !Number.isInteger(quantity) || quantity <= 0) return;
+      const draft = forgeDraftForWorkshop(accountId, w);
+      draft.selectedMines = [...draft.selectedMines, { itemId, quantity }];
+      saveForgeDraft(accountId, draft);
+      renderForgeSettings(accountId);
+    }
+    if (t.dataset.forgeRemove !== undefined) {
+      const parts = t.dataset.forgeRemove.split("-");
+      const w = parseInt(parts[0]);
+      const idx = parseInt(parts[1]);
+      if (isNaN(w) || isNaN(idx)) return;
+      const draft = forgeDraftForWorkshop(accountId, w);
+      draft.selectedMines.splice(idx, 1);
+      saveForgeDraft(accountId, draft);
+      renderForgeSettings(accountId);
+    }
+  };
 }
 function forgeSchedule(delayMs, accountId) {
   const state = runtimeFor(accountId);
