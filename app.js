@@ -312,6 +312,8 @@ function normalizeForgeTypesFromBundle(source) {
   return types;
 }
 const forgeExpandedMap = new Map();
+const forgeCompleteFailures = new Map();
+const FORGE_COMPLETE_SKIP_THRESHOLD = 2;
 function forgeExpanded(accountId) { if (!forgeExpandedMap.has(accountId)) forgeExpandedMap.set(accountId, new Set()); return forgeExpandedMap.get(accountId); }
 const MINE_CATEGORY_IDS = {
   "土石": new Set([665237, 975783, 803143, 877651, 330988, 596572, 332972, 877655, 9028823, 1289756, 803142, 803146]),
@@ -366,11 +368,11 @@ function validateForgeDraft(draft, { workshops, heroes, mines, types }) {
   }
   return { ok: true, materialTotal, type, hero, selectedMines: [...merged].map(([itemId, quantity]) => ({ itemId: Number(itemId), quantity })) };
 }
-function nextForgeAction({ workshops, heroes, drafts }) {
-  // 1. 先完成可完成的鍛造
+function nextForgeAction({ workshops, heroes, drafts, skippedHeroIds = new Set() }) {
+  // 1. 先完成可完成的鍛造（跳過多次失敗的卡死英雄）
   for (const hero of heroes || []) {
     const as = Number(hero.actionState);
-    if (as === 4 && hero.canComplete === true) return { kind: "complete", workshop: Number(hero.actionTarget), heroId: hero.id };
+    if (as === 4 && hero.canComplete === true && !skippedHeroIds.has(String(hero.id))) return { kind: "complete", workshop: Number(hero.actionTarget), heroId: hero.id };
   }
   // 2. 收集佔用中的鍛造坊，找最近完成時間
   const occupiedWorkshops = new Set();
@@ -582,7 +584,7 @@ function setForgeEnabled(accountId, enabled) {
   save();
   if (enabled) {
     const state = runtimeFor(accountId);
-    if (!state.forgeRunning) { state.forgeRunning = true; state.forgeBusy = false; recordForgeDebug(accountId, "forge.runner.started"); forgeSchedule(1, accountId); }
+    if (!state.forgeRunning) { state.forgeRunning = true; state.forgeBusy = false; for (const k of [...forgeCompleteFailures.keys()]) { if (k.startsWith(accountId + ":")) forgeCompleteFailures.delete(k); } recordForgeDebug(accountId, "forge.runner.started"); forgeSchedule(1, accountId); }
   } else stopForgeRunner(accountId);
   if (accountId === activeId) renderForgeSettings(accountId);
 }
@@ -625,8 +627,9 @@ async function forgeTurn(accountId) {
     if (!state.forgeRunning) return;
     const workshops = forgeWorkshopsFromProfile(state.forgeProfile);
     const drafts = forgeDrafts(accountId, workshops);
-    const action = nextForgeAction({ workshops, heroes: state.heroes, drafts });
-    recordForgeDebug(accountId, "forge.turn.action", { kind: action.kind, heroId: action.heroId ?? null, workshop: action.workshop ?? null, actionCompleteTime: action.actionCompleteTime ?? null });
+    const skippedCompleteHeroes = new Set([...forgeCompleteFailures.entries()].filter(([k, v]) => k.startsWith(accountId + ":") && v >= FORGE_COMPLETE_SKIP_THRESHOLD).map(([k]) => k.slice(accountId.length + 1)));
+    const action = nextForgeAction({ workshops, heroes: state.heroes, drafts, skippedHeroIds: skippedCompleteHeroes });
+    recordForgeDebug(accountId, "forge.turn.action", { kind: action.kind, heroId: action.heroId ?? null, workshop: action.workshop ?? null, actionCompleteTime: action.actionCompleteTime ?? null, ...(skippedCompleteHeroes.size ? { skippedCompleteHeroes: [...skippedCompleteHeroes] } : {}) });
     if (action.kind === "wait") { recordForgeDebug(accountId, "forge.wait", { workshop: action.workshop, waitMs: forgeWaitMs(action.actionCompleteTime) }); forgeSchedule(forgeWaitMs(action.actionCompleteTime), accountId); return; }
     if (action.kind === "complete") {
       const heroBeforeComplete = state.heroes.find((entry) => String(entry.id) === String(action.heroId));
@@ -638,8 +641,11 @@ async function forgeTurn(accountId) {
         recordForgeDebug(accountId, "forge.complete.confirmed", { workshop: action.workshop, heroId: action.heroId });
         if (hero) await useForgeRecoveryItem(accountId, action.workshop, hero);
       } catch (error) {
+        const failKey = `${accountId}:${action.heroId}`;
+        const failures = (forgeCompleteFailures.get(failKey) || 0) + 1;
+        forgeCompleteFailures.set(failKey, failures);
         const delayMs = error.statusCode === 400 ? 30000 : 1000;
-        await refreshForgeAfterUncertainWrite(accountId, "forge.complete.write", error, { workshop: action.workshop, heroId: action.heroId, heroActionState: heroBeforeComplete ? Number(heroBeforeComplete.actionState) : null, heroCanComplete: heroBeforeComplete?.canComplete ?? null });
+        await refreshForgeAfterUncertainWrite(accountId, "forge.complete.write", error, { workshop: action.workshop, heroId: action.heroId, heroActionState: heroBeforeComplete ? Number(heroBeforeComplete.actionState) : null, heroCanComplete: heroBeforeComplete?.canComplete ?? null, completeFailures: failures, willSkip: failures >= FORGE_COMPLETE_SKIP_THRESHOLD });
         if (state.forgeRunning) forgeSchedule(delayMs, accountId);
         return;
       }
