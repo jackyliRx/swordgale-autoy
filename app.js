@@ -432,7 +432,8 @@ async function refreshForgeData(accountId = activeId) {
   state.forgeMines = normalizeForgeMines(itemsPayload) || [];
   state.forgeTypes = types;
   state.forgeDataUpdatedAt = Date.now();
-  recordForgeDebug(accountId, "forge-data.refresh.completed", { workshops: forgeWorkshopsFromProfile(profile).length, typeCount: types.length, eligibleHeroCount: forgeEligibleHeroes(state.heroes).length, mineCount: state.forgeMines.length });
+  const forgingHeroes = (state.heroes || []).filter((h) => { const as = Number(h.actionState); return as === 4 || as === 5; }).map((h) => ({ heroId: h.id, actionState: Number(h.actionState), workshop: Number(h.actionTarget), canComplete: h.canComplete ?? null, actionCompleteTime: h.actionCompleteTime ?? null }));
+  recordForgeDebug(accountId, "forge-data.refresh.completed", { workshops: forgeWorkshopsFromProfile(profile).length, typeCount: types.length, eligibleHeroCount: forgeEligibleHeroes(state.heroes).length, mineCount: state.forgeMines.length, forgingHeroes });
   if (accountId === activeId) { renderHeroes(accountId); renderForgeSettings(); }
   return state;
 }
@@ -625,6 +626,7 @@ async function forgeTurn(accountId) {
     const workshops = forgeWorkshopsFromProfile(state.forgeProfile);
     const drafts = forgeDrafts(accountId, workshops);
     const action = nextForgeAction({ workshops, heroes: state.heroes, drafts });
+    recordForgeDebug(accountId, "forge.turn.action", { kind: action.kind, heroId: action.heroId ?? null, workshop: action.workshop ?? null, actionCompleteTime: action.actionCompleteTime ?? null });
     if (action.kind === "wait") { recordForgeDebug(accountId, "forge.wait", { workshop: action.workshop, waitMs: forgeWaitMs(action.actionCompleteTime) }); forgeSchedule(forgeWaitMs(action.actionCompleteTime), accountId); return; }
     if (action.kind === "complete") {
       const heroBeforeComplete = state.heroes.find((entry) => String(entry.id) === String(action.heroId));
@@ -668,6 +670,7 @@ async function forgeTurn(accountId) {
       } catch (error) { await refreshForgeAfterUncertainWrite(accountId, "forge.start.write", error, { workshop: Number(workshop), heroId: validated.hero.id }); if (state.forgeRunning) forgeSchedule(30000, accountId); }
       return;
     }
+    recordForgeDebug(accountId, "forge.idle", {});
     forgeSchedule(30000, accountId);
   } catch (error) {
     recordForgeDebug(accountId, "forge.turn.error", { error: String(error?.message || error).slice(0, 160) });
