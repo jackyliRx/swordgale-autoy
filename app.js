@@ -373,7 +373,7 @@ function nextForgeAction({ workshops, heroes, drafts, skippedHeroIds = new Set()
   // 1. 先完成可完成的鍛造（跳過卡死英雄；boot scan 後只對勾選坊完成）
   for (const hero of heroes || []) {
     const as = Number(hero.actionState);
-    if (as === 4 && hero.canComplete === true && !skippedHeroIds.has(String(hero.id))) {
+    if (hero.canComplete === true && !skippedHeroIds.has(String(hero.id))) {
       if (enabledCompleteOnly && !(drafts?.[Number(hero.actionTarget)]?.enabled === true)) continue;
       return { kind: "complete", workshop: Number(hero.actionTarget), heroId: hero.id };
     }
