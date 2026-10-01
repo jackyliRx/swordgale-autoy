@@ -1708,7 +1708,6 @@ function init() {
   if (active()) loadSettings();
   render();
   if (active()) loadAccountSnapshot(activeId);
-  for (const account of accounts) if (account.settings?.forgeEnabled === true) setForgeEnabled(account.id, true);
   const pendingReverifyMs = 10 * 60 * 1000;
   const now = Date.now();
   for (const incident of itemRecoveryIncidents) {
