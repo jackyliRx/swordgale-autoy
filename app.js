@@ -1,11 +1,12 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.20";
+const uiVersion = "0.7.21";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
 const itemRecoveryTimelineLimit = 30;
 const forgeDebugLogKey = "autoy.forgeDebugLogs.v1";
 const forgeDebugLogLimit = 200;
+const forgeTypesKey = "autoy.forgeTypes.v1";
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let itemRecoveryIncidents = loadItemRecoveryIncidents();
 let forgeDebugLogs = loadForgeDebugLogs();
@@ -311,17 +312,12 @@ function normalizeForgeTypesFromBundle(source) {
   }
   return types;
 }
-async function loadLiveForgeTypes() {
-  const home = await fetch("https://myteam.swordgale.online/");
-  if (!home.ok) throw new Error(`無法讀取官方鍛造介面：${home.status}`);
-  const html = await home.text();
-  const asset = html.match(/assets\/(Forge-[^"']+\.js)/)?.[1];
-  if (!asset) throw new Error("官方鍛造介面未提供類型資料來源");
-  const response = await fetch(`https://myteam.swordgale.online/assets/${asset}`);
-  if (!response.ok) throw new Error(`無法讀取官方鍛造類型：${response.status}`);
-  const types = normalizeForgeTypesFromBundle(await response.text());
-  if (!types.length) throw new Error("官方鍛造類型資料格式無法辨識");
-  return types;
+function loadStoredForgeTypes() {
+  try {
+    const value = JSON.parse(localStorage.getItem(forgeTypesKey) || "null");
+    if (Array.isArray(value) && value.length) return value;
+  } catch {}
+  throw new Error("尚未取得鍛造種類清單；請在遊戲鍛造頁面開啟 Recorder 以自動取得");
 }
 function validateForgeDraft(draft, { workshops, heroes, mines, types }) {
   const workshop = Number(draft?.workshop);
@@ -386,11 +382,11 @@ async function refreshForgeData(accountId = activeId) {
   recordForgeDebug(accountId, "forge-data.refresh.started");
   const heroesPayloadPromise = state.refreshPromise ? state.refreshPromise.then(() => ({ heroes: state.heroes })) : request("/heroes", {}, accountId);
   const itemsPayloadPromise = refreshItems(accountId).then(() => state.itemsPayload);
-  const [profile, heroesPayload, itemsPayload, types] = await Promise.all([
+  const types = loadStoredForgeTypes();
+  const [profile, heroesPayload, itemsPayload] = await Promise.all([
     request("/profile", {}, accountId),
     heroesPayloadPromise,
     itemsPayloadPromise,
-    loadLiveForgeTypes(),
   ]);
   state.forgeProfile = profile || null;
   state.heroes = heroesPayload?.heroes || [];
