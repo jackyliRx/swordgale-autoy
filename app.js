@@ -311,6 +311,8 @@ function normalizeForgeTypesFromBundle(source) {
   }
   return types;
 }
+const forgeCollapsedMap = new Map();
+function forgeCollapsed(accountId) { if (!forgeCollapsedMap.has(accountId)) forgeCollapsedMap.set(accountId, new Set()); return forgeCollapsedMap.get(accountId); }
 const MINE_CATEGORY_IDS = {
   "土石": new Set([665237, 975783, 803143, 877651, 330988, 596572, 332972, 877655, 9028823, 1289756, 803142, 803146]),
   "木材": new Set([725814, 725812, 725813, 725810, 725811, 2250967]),
@@ -461,10 +463,11 @@ function renderForgeSettings(accountId = activeId) {
     const heroOptions = `<option value="">未選擇</option>${forgingHeroOption}${eligibleHeroes.map((h) => `<option value="${safe(h.id)}" ${String(draft.heroId) === String(h.id) ? "selected" : ""}>${safe(h.name)}</option>`).join("")}`;
     const typeOptions = state.forgeTypes.map((t) => `<option value="${safe(t.id)}" ${draft.type === t.id ? "selected" : ""}>${safe(t.name)}（材料上限 ${Number(t.limit)}）</option>`).join("");
     const recoveryOpts = [`<option value="">不使用 SP 補品</option>`].concat(recoveryItems(accountId).map((item) => `<option value="${safe(item.id)}" ${String(draft.recoveryItemId) === String(item.id) ? "selected" : ""}>${safe(itemLabel(item))}</option>`)).join("");
-    const copyOpts = [`<option value="">從其他工坊複製設定</option>`].concat(workshops.filter((ow) => ow !== w).map((ow) => `<option value="${ow}">工坊 ${ow}</option>`)).join("");
+    const copyOpts = [`<option value="">從其他鍛造坊複製設定</option>`].concat(workshops.filter((ow) => ow !== w).map((ow) => `<option value="${ow}">鍛造坊 ${ow}</option>`)).join("");
     const selectedList = (draft.selectedMines || []).map((entry, idx) => { const mine = state.forgeMines.find((m) => String(m.id) === String(entry.itemId)); return `<li>${safe(mine?.name || "已失效材料")} × ${Number(entry.quantity)} <button type="button" data-forge-remove="${w}-${idx}">移除</button></li>`; }).join("") || "<li>尚未選擇材料。</li>";
     const statusHint = active ? `<p class="hint">▶ ${safe(active.name)} 鍛造中${active.actionCompleteTime ? `，預計完成 ${new Date(active.actionCompleteTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}</p>` : "";
-    return `<div class="forge-workshop-card"><label class="forge-workshop-header"><input type="checkbox" data-forge-job-enabled="${w}" ${draft.enabled ? "checked" : ""} /><strong>工坊 ${w}</strong></label>${statusHint}<div class="forge-workshop-settings"><label class="forge-copy-row">從其他工坊複製<select data-forge-copy="${w}">${copyOpts}</select></label><label>選擇角色<select data-forge-hero="${w}">${heroOptions}</select></label><label>裝備名稱<input data-forge-name="${w}" maxlength="40" value="${safe(draft.name)}" /></label><label>裝備類型<select data-forge-type="${w}">${typeOptions}</select></label><label>完成後 SP 補品<select data-forge-recovery="${w}">${recoveryOpts}</select></label><div class="forge-material-section"><strong>選擇材料</strong><div class="forge-material-add"><label>材料<select data-forge-material="${w}">${groupedMineOptions}</select></label><label>數量<input data-forge-qty="${w}" type="number" min="1" value="1" /></label><button type="button" data-forge-add="${w}">加入</button></div><ul>${selectedList}</ul></div></div></div>`;
+    const collapsed = forgeCollapsed(accountId).has(w);
+    return `<div class="forge-workshop-card${collapsed ? " collapsed" : ""}" data-w="${w}"><div class="forge-workshop-header"><label class="forge-workshop-header-label"><input type="checkbox" data-forge-job-enabled="${w}" ${draft.enabled ? "checked" : ""} /><strong>鍛造坊 ${w}</strong></label><button type="button" data-forge-toggle="${w}" class="forge-toggle-btn" aria-label="展開或收合">▲</button></div>${statusHint}<div class="forge-workshop-settings"><label class="forge-copy-row">從其他鍛造坊複製<select data-forge-copy="${w}">${copyOpts}</select></label><label>選擇角色<select data-forge-hero="${w}">${heroOptions}</select></label><label>裝備名稱<input data-forge-name="${w}" maxlength="40" value="${safe(draft.name)}" /></label><label>裝備類型<select data-forge-type="${w}">${typeOptions}</select></label><label>完成後 SP 補品<select data-forge-recovery="${w}">${recoveryOpts}</select></label><div class="forge-material-section"><strong>選擇材料</strong><div class="forge-material-add"><label>材料<select data-forge-material="${w}">${groupedMineOptions}</select></label><label>數量<input data-forge-qty="${w}" type="number" min="1" value="1" /></label><button type="button" data-forge-add="${w}">加入</button></div><ul>${selectedList}</ul></div></div></div>`;
   }).join("");
   panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">${state.forgeRunning ? "自動鍛造執行中；不影響自動狩獵。" : "每個鍛造坊保存各自的角色、名稱、類型、材料與 SP 補品。"}</p></div><label class="checkbox-setting"><input id="forge-enabled" type="checkbox" ${account.settings?.forgeEnabled === true ? "checked" : ""} /> 啟用此帳號自動鍛造</label></div>${workshopCards}<p class="hint">更新時間：${safe(new Date(state.forgeDataUpdatedAt).toLocaleTimeString())}。每次開始與完成前都會重新讀取並驗證；不確定寫入結果時只重讀、不重送。</p>`;
   $("forge-enabled").onchange = () => setForgeEnabled(accountId, $("forge-enabled").checked);
@@ -497,6 +500,14 @@ function renderForgeSettings(accountId = activeId) {
   };
   panel.onclick = (e) => {
     const t = e.target;
+    if (t.dataset.forgeToggle !== undefined) {
+      const w = parseInt(t.dataset.forgeToggle);
+      const collapsed = forgeCollapsed(accountId);
+      if (collapsed.has(w)) collapsed.delete(w); else collapsed.add(w);
+      const card = panel.querySelector(`[data-w="${w}"]`);
+      if (card) card.classList.toggle("collapsed");
+      return;
+    }
     if (t.dataset.forgeAdd !== undefined) {
       const w = parseInt(t.dataset.forgeAdd);
       const matSel = panel.querySelector(`[data-forge-material="${w}"]`);

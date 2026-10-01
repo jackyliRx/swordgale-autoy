@@ -11,18 +11,23 @@ label { display:grid; gap:5px; font-size:.86rem; } .account { display:flex; just
 .item-settings { margin-top:16px; border-top:1px solid #344250; padding-top:16px; } .item-settings-heading { display:flex; justify-content:space-between; align-items:start; gap:12px; } .item-settings-heading h3 { margin:0; } .item-settings-heading .hint { margin:5px 0 0; } .item-enable { margin:14px 0; display:flex; align-items:center; gap:8px; } .item-grid { display:grid; grid-template-columns:minmax(220px,.7fr) minmax(0,1.3fr); gap:14px; } .item-grid > div { display:grid; gap:9px; align-content:start; padding:12px; border:1px solid #344250; border-radius:8px; } .item-grid label { min-width:0; } .item-grid select { width:100%; min-width:0; background:#0f151c; color:inherit; border:1px solid #526273; border-radius:6px; padding:8px; } .item-hero-settings { overflow:auto; } .item-hero-row { display:grid; grid-template-columns:minmax(120px,1fr) repeat(3,minmax(150px,1fr)); gap:8px; align-items:end; padding:9px 0; border-top:1px solid #2b3845; } .item-hero-row:first-of-type { border-top:0; } .item-hero-row > span { font-size:.9rem; padding-bottom:8px; }
 .recovery-actions { margin:12px 0; padding:12px; border:1px solid #e87878; border-radius:8px; background:#351f23; } .recovery-actions p { margin:6px 0; }
 .utility-actions { margin-top:12px; } dialog { width:min(960px,calc(100vw - 32px)); max-height:calc(100vh - 32px); border:1px solid #526273; border-radius:12px; background:#19212b; color:#edf2f7; padding:18px; } dialog::backdrop { background:rgba(0,0,0,.62); } .dialog-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; } .dialog-heading h2 { margin:0; } dialog pre { max-height:calc(100vh - 190px); } .report-layout { display:grid; grid-template-columns:minmax(230px, .8fr) minmax(0, 1.7fr); gap:14px; min-height:360px; } .report-list { border:1px solid #425466; border-radius:8px; overflow:auto; max-height:calc(100vh - 210px); } .report-row { width:100%; text-align:left; border:0; border-bottom:1px solid #344250; border-radius:0; background:transparent; padding:11px; } .report-row:hover,.report-row.active { background:#273848; } .report-row.dead { border-left:4px solid #e87878; } .report-row small { display:block; color:#b8c5d1; margin-top:4px; } .report-detail { border:1px solid #425466; border-radius:8px; padding:14px; overflow:auto; max-height:calc(100vh - 210px); } .report-detail h3,.report-detail h4 { margin:0 0 8px; } .report-summary { color:#d6e9ff; line-height:1.6; } .report-messages { margin:12px 0 0; padding-left:20px; } .report-messages li { margin:6px 0; } .report-messages .critical { color:#ffaaa4; font-weight:600; } .report-messages .exp { color:#9fdaa0; }
-.forge-workshop-card { border:1px solid #344250; border-radius:8px; padding:14px; margin:10px 0; background:#151d26; }
-.forge-workshop-header { display:flex; align-items:center; gap:9px; margin:0 0 10px; padding-top:0; grid-template-columns:none; }
-.forge-workshop-header input[type="checkbox"] { width:16px; height:16px; padding:0; margin:0; }
+.forge-workshop-card { border:1px solid #344250; border-radius:8px; padding:14px; margin:10px 0; background:#151d26; font-size:1rem; }
+.forge-workshop-header { display:flex; align-items:center; justify-content:space-between; gap:9px; margin:0 0 10px; }
+.forge-workshop-header-label { display:flex; align-items:center; gap:9px; cursor:default; grid-template-columns:none; padding-top:0; font-size:1.05rem; }
+.forge-workshop-header-label input[type="checkbox"] { width:17px; height:17px; padding:0; margin:0; cursor:pointer; }
+.forge-toggle-btn { background:transparent; border:none; color:#b8c5d1; font-size:.85rem; padding:2px 6px; cursor:pointer; transition:transform .2s; }
+.forge-workshop-card.collapsed .forge-toggle-btn { transform:rotate(180deg); }
+.forge-workshop-card.collapsed .forge-workshop-settings { display:none; }
+.forge-workshop-card.collapsed .hint { display:none; }
 .forge-workshop-settings { display:grid; gap:9px; }
-.forge-workshop-settings > label select,.forge-workshop-settings > label input { width:100%; min-width:0; background:#0f151c; color:inherit; border:1px solid #526273; border-radius:6px; padding:8px; }
-.forge-copy-row select { max-width:260px; }
+.forge-workshop-settings > label select,.forge-workshop-settings > label input { width:100%; min-width:0; background:#0f151c; color:inherit; border:1px solid #526273; border-radius:6px; padding:8px; font-size:1rem; }
+.forge-copy-row select { max-width:280px; }
 .forge-material-section { border-top:1px solid #344250; padding-top:10px; margin-top:4px; display:grid; gap:8px; }
-.forge-material-section strong { font-size:.88rem; color:#b8c5d1; }
+.forge-material-section strong { font-size:.92rem; color:#b8c5d1; }
 .forge-material-add { display:flex; flex-wrap:wrap; gap:8px; align-items:end; }
 .forge-material-add label { flex:1; min-width:160px; }
-.forge-material-add label select,.forge-material-add label input { width:100%; min-width:0; background:#0f151c; color:inherit; border:1px solid #526273; border-radius:6px; padding:8px; }
-.forge-material-section ul { margin:0; padding-left:18px; font-size:.9rem; }
+.forge-material-add label select,.forge-material-add label input { width:100%; min-width:0; background:#0f151c; color:inherit; border:1px solid #526273; border-radius:6px; padding:8px; font-size:1rem; }
+.forge-material-section ul { margin:0; padding-left:18px; font-size:.95rem; }
 .forge-material-section li { margin:4px 0; }
 @media (max-width: 780px) { main { padding:14px; } .workspace { grid-template-columns:1fr; } .sidebar { position:static; max-height:none; } .sidebar .heroes { grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); } .account { align-items:stretch; flex-direction:column; } .account-actions { justify-items:start; } .account-actions .actions { justify-content:flex-start; } .item-grid { grid-template-columns:1fr; } .item-hero-row { grid-template-columns:1fr; } .item-hero-row > span { padding-bottom:0; } }
 @media (max-width: 780px) { .report-layout { grid-template-columns:1fr; } .report-list,.report-detail { max-height:280px; } }
