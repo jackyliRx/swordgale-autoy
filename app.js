@@ -359,7 +359,7 @@ function nextForgeAction({ workshops, heroes, drafts }) {
     const as = Number(hero.actionState);
     if (as !== 4 && as !== 5) continue;
     const workshop = Number(hero.actionTarget);
-    if (hero.canComplete === true) return { kind: "complete", workshop, heroId: hero.id };
+    if (as === 4 && hero.canComplete === true) return { kind: "complete", workshop, heroId: hero.id };
     if (hero.actionCompleteTime) return { kind: "wait", workshop, heroId: hero.id, actionCompleteTime: hero.actionCompleteTime };
   }
   for (const workshop of workshops || []) {
@@ -551,7 +551,12 @@ async function forgeTurn(accountId) {
         if (hero && (Number(hero.actionState) === 4 || Number(hero.actionState) === 5)) throw new Error("完成鍛造後最新狀態仍顯示鍛造中");
         recordForgeDebug(accountId, "forge.complete.confirmed", { workshop: action.workshop });
         if (hero) await useForgeRecoveryItem(accountId, action.workshop, hero);
-      } catch (error) { await refreshForgeAfterUncertainWrite(accountId, "forge.complete.write", error); }
+      } catch (error) {
+        const delayMs = error.statusCode === 400 ? 30000 : 1000;
+        await refreshForgeAfterUncertainWrite(accountId, "forge.complete.write", error);
+        if (state.forgeRunning) forgeSchedule(delayMs, accountId);
+        return;
+      }
       if (state.forgeRunning) forgeSchedule(1000, accountId);
       return;
     }
