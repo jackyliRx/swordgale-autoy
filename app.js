@@ -1624,19 +1624,10 @@ async function turn(accountId) {
     else { operation(accountId, "runner.branch", { branch: "hunt" }); debug(accountId, "runner.branch", { branch: "hunt" }); await hunt(c, accountId); }
   } catch (error) {
     if (error.name !== "AbortError" && error.statusCode === 403 && error.responseBody?.code === "CAPTCHA_REQUIRED") {
-      const challengeId = Number(error.responseBody.challengeId);
-      if (Number.isFinite(challengeId)) {
-        log(`偵測到活人驗證要求（挑戰 ${challengeId}）；正在自動完成`, accountId);
-        try {
-          const verify = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, checked: true }) }, accountId);
-          if (verify?.ok !== true) throw new Error("活人驗證回應異常");
-          log(`已自動完成活人驗證（挑戰 ${challengeId}）`, accountId);
-          if (state.running) schedule(1000, accountId);
-          return;
-        } catch (captchaError) {
-          if (captchaError.name !== "AbortError") log(`活人驗證失敗：${captchaError.message || captchaError}`, accountId);
-        }
-      }
+      log("偵測到活人驗證，已停止自動狩獵與自動鍛造", accountId);
+      stopForgeRunner(accountId, "偵測到活人驗證");
+      stopRunner(accountId, "偵測到活人驗證");
+      return;
     }
     if (error.name !== "AbortError") debug(accountId, "runner.error", { message: error.message || String(error) });
     if (error.name !== "AbortError") log(error.message || String(error), accountId);
