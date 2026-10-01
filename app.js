@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.25";
+const uiVersion = "0.7.26";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -386,13 +386,7 @@ function renderForgeDebugLogs() {
 async function refreshForgeData(accountId = activeId) {
   const state = runtimeFor(accountId);
   recordForgeDebug(accountId, "forge-data.refresh.started");
-  let types;
-  try {
-    types = loadStoredForgeTypes();
-  } catch (error) {
-    recordForgeDebug(accountId, "forge-data.refresh.failed", { reason: "types-not-cached" });
-    throw error;
-  }
+  const types = loadStoredForgeTypes();
   const heroesPayloadPromise = state.refreshPromise ? state.refreshPromise.then(() => ({ heroes: state.heroes })) : request("/heroes", {}, accountId);
   const itemsPayloadPromise = refreshItems(accountId).then(() => state.itemsPayload);
   const [profile, heroesPayload, itemsPayload] = await Promise.all([
@@ -446,10 +440,13 @@ function renderForgeSettings(accountId = activeId) {
   const workshops = forgeWorkshopsFromProfile(state.forgeProfile);
   const heroes = forgeEligibleHeroes(state.heroes);
   const draft = state.forgeDraft;
+  const activeForges = new Map();
+  for (const hero of state.heroes || []) { const as = Number(hero.actionState); if ((as === 4 || as === 5) && hero.actionTarget != null) activeForges.set(Number(hero.actionTarget), hero); }
+  const currentActive = activeForges.get(Number(draft.workshop));
   const materialOptions = state.forgeMines.filter((mine) => Number(mine.available) > 0).map((mine) => `<option value="${safe(mine.id)}">${safe(mine.name)}（${Number(mine.available)}）</option>`).join("");
   const recoveryOptions = [`<option value="">不使用 SP 補品</option>`].concat(recoveryItems(accountId).map((item) => `<option value="${safe(item.id)}" ${String(draft.recoveryItemId) === String(item.id) ? "selected" : ""}>${safe(itemLabel(item))}</option>`)).join("");
   const selected = (draft.selectedMines || []).map((entry, index) => { const mine = state.forgeMines.find((candidate) => String(candidate.id) === String(entry.itemId)); return `<li>${safe(mine?.name || "已失效材料")} × ${Number(entry.quantity)} <button type="button" data-forge-remove-material="${index}">移除</button></li>`; }).join("") || "<li>尚未選擇材料。</li>";
-  panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">${state.forgeRunning ? "自動鍛造執行中；不影響自動狩獵。" : "每個鍛造坊保存各自的角色、名稱、類型、材料與 SP 補品。"}</p></div><label class="checkbox-setting"><input id="forge-enabled" type="checkbox" ${account.settings?.forgeEnabled === true ? "checked" : ""} /> 啟用此帳號自動鍛造</label></div><div class="item-grid"><div><label>選擇鍛造坊<select id="forge-workshop">${workshops.map((target) => `<option value="${target}" ${Number(draft.workshop) === target ? "selected" : ""}>鍛造坊 ${target}</option>`).join("")}</select></label><label class="checkbox-setting"><input id="forge-job-enabled" type="checkbox" ${draft.enabled ? "checked" : ""} /> 此鍛造坊排程</label><label>選擇角色<select id="forge-hero"><option value="">未選擇</option>${heroes.map((hero) => `<option value="${safe(hero.id)}" ${String(draft.heroId) === String(hero.id) ? "selected" : ""}>${safe(hero.name)}</option>`).join("")}</select></label><label>裝備名稱<input id="forge-name" maxlength="40" value="${safe(draft.name)}" /></label><label>裝備類型<select id="forge-type">${state.forgeTypes.map((type) => `<option value="${safe(type.id)}" ${draft.type === type.id ? "selected" : ""}>${safe(type.name)}（材料上限 ${Number(type.limit)}）</option>`).join("")}</select></label><label>完成後 SP 補品<select id="forge-recovery-item">${recoveryOptions}</select></label></div><div><strong>選擇材料</strong><label>材料<select id="forge-material">${materialOptions}</select></label><label>數量<input id="forge-material-quantity" type="number" min="1" value="1" /></label><button id="forge-add-material" type="button">加入材料</button><ul id="forge-selected-materials">${selected}</ul></div></div><p class="hint">更新時間：${safe(new Date(state.forgeDataUpdatedAt).toLocaleTimeString())}。每次開始與完成前都會重新讀取並驗證；不確定寫入結果時只重讀、不重送。</p>`;
+  panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">${state.forgeRunning ? "自動鍛造執行中；不影響自動狩獵。" : "每個鍛造坊保存各自的角色、名稱、類型、材料與 SP 補品。"}</p></div><label class="checkbox-setting"><input id="forge-enabled" type="checkbox" ${account.settings?.forgeEnabled === true ? "checked" : ""} /> 啟用此帳號自動鍛造</label></div><div class="item-grid"><div><label>選擇鍛造坊<select id="forge-workshop">${workshops.map((target) => { const af = activeForges.get(target); return `<option value="${target}" ${Number(draft.workshop) === target ? "selected" : ""}>${safe(af ? `鍛造坊 ${target} ─ ${af.name}` : `鍛造坊 ${target}`)}</option>`; }).join("")}</select></label>${currentActive ? `<p class="hint">▶ ${safe(currentActive.name)} 鍛造中${currentActive.actionCompleteTime ? `，預計完成 ${new Date(currentActive.actionCompleteTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}</p>` : ""}<label class="checkbox-setting"><input id="forge-job-enabled" type="checkbox" ${draft.enabled ? "checked" : ""} /> 此鍛造坊排程</label><label>選擇角色<select id="forge-hero"><option value="">未選擇</option>${heroes.map((hero) => `<option value="${safe(hero.id)}" ${String(draft.heroId) === String(hero.id) ? "selected" : ""}>${safe(hero.name)}</option>`).join("")}</select></label><label>裝備名稱<input id="forge-name" maxlength="40" value="${safe(draft.name)}" /></label><label>裝備類型<select id="forge-type">${state.forgeTypes.map((type) => `<option value="${safe(type.id)}" ${draft.type === type.id ? "selected" : ""}>${safe(type.name)}（材料上限 ${Number(type.limit)}）</option>`).join("")}</select></label><label>完成後 SP 補品<select id="forge-recovery-item">${recoveryOptions}</select></label></div><div><strong>選擇材料</strong><label>材料<select id="forge-material">${materialOptions}</select></label><label>數量<input id="forge-material-quantity" type="number" min="1" value="1" /></label><button id="forge-add-material" type="button">加入材料</button><ul id="forge-selected-materials">${selected}</ul></div></div><p class="hint">更新時間：${safe(new Date(state.forgeDataUpdatedAt).toLocaleTimeString())}。每次開始與完成前都會重新讀取並驗證；不確定寫入結果時只重讀、不重送。</p>`;
   const persistDraft = () => saveForgeDraft(accountId, state.forgeDraft);
   $("forge-enabled").onchange = () => setForgeEnabled(accountId, $("forge-enabled").checked);
   $("forge-workshop").onchange = () => { persistDraft(); state.forgeDraft = forgeDraftForWorkshop(accountId, Number($("forge-workshop").value)); renderForgeSettings(accountId); };
