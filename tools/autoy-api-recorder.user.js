@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Autoy API Recorder
 // @namespace    https://github.com/jackyliRx/swordgale-autoy
-// @version      1.2.0
+// @version      1.3.0
 // @description  Record Swordgale API request and response pairs for Autoy debugging.
 // @match        https://myteam.swordgale.online/*
 // @run-at       document-start
@@ -108,21 +108,33 @@
     return originalSend.apply(this, arguments);
   };
 
+  function parseForgeTypesFromBundle(source) {
+    const types = [];
+    const seen = new Set();
+    for (const match of String(source || "").matchAll(/\{id:`([^`]+)`,name:`([^`]+)`,limit:(\d+)/g)) {
+      const [, id, name, limit] = match;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      types.push({ id, name, limit: Number(limit) });
+    }
+    return types;
+  }
   async function extractAndCacheForgeTypes() {
     try {
-      const forgeScript = [...document.querySelectorAll("script[src]")].find((s) => /\/assets\/Forge-[^/]+\.js/.test(s.src));
-      if (!forgeScript) return;
-      const response = await originalFetch(forgeScript.src);
-      if (!response.ok) return;
-      const text = await response.text();
-      const types = [];
-      const seen = new Set();
-      for (const match of text.matchAll(/\{id:`([^`]+)`,name:`([^`]+)`,limit:(\d+)/g)) {
-        const [, id, name, limit] = match;
-        if (seen.has(id)) continue;
-        seen.add(id);
-        types.push({ id, name, limit: Number(limit) });
+      // 優先從已載入的 DOM script 標籤找（適用於已在鍛造頁面的情況）
+      let bundleSrc = ([...document.querySelectorAll("script[src]")].find((s) => /\/assets\/Forge-[^/]+\.js/.test(s.src)) || {}).src;
+      // 找不到時退回抓首頁 HTML 解析 bundle 路徑（同 origin，無 CORS）
+      if (!bundleSrc) {
+        const homeRes = await originalFetch(location.origin + "/");
+        if (!homeRes.ok) return;
+        const html = await homeRes.text();
+        const asset = html.match(/assets\/(Forge-[^"']+\.js)/)?.[1];
+        if (!asset) return;
+        bundleSrc = `${location.origin}/assets/${asset}`;
       }
+      const res = await originalFetch(bundleSrc);
+      if (!res.ok) return;
+      const types = parseForgeTypesFromBundle(await res.text());
       if (!types.length) return;
       try { localStorage.setItem(FORGE_TYPES_KEY, JSON.stringify(types)); } catch {}
       render();
