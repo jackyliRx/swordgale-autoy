@@ -380,9 +380,9 @@ function renderForgeDebugLogs() {
 async function refreshForgeData(accountId = activeId) {
   const state = runtimeFor(accountId);
   recordForgeDebug(accountId, "forge-data.refresh.started");
+  const types = loadStoredForgeTypes();
   const heroesPayloadPromise = state.refreshPromise ? state.refreshPromise.then(() => ({ heroes: state.heroes })) : request("/heroes", {}, accountId);
   const itemsPayloadPromise = refreshItems(accountId).then(() => state.itemsPayload);
-  const types = loadStoredForgeTypes();
   const [profile, heroesPayload, itemsPayload] = await Promise.all([
     request("/profile", {}, accountId),
     heroesPayloadPromise,
