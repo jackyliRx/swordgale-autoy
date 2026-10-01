@@ -646,13 +646,16 @@ async function forgeTurn(accountId) {
         const hero = state.heroes.find((entry) => String(entry.id) === String(action.heroId));
         if (hero && (Number(hero.actionState) === 4 || Number(hero.actionState) === 5)) throw new Error("完成鍛造後最新狀態仍顯示鍛造中");
         recordForgeDebug(accountId, "forge.complete.confirmed", { workshop: action.workshop, heroId: action.heroId });
+        log(`鍛造坊 ${action.workshop} 鍛造完成`, accountId);
         if (hero) await useForgeRecoveryItem(accountId, action.workshop, hero);
       } catch (error) {
         const failKey = `${accountId}:${action.heroId}`;
         const failures = (forgeCompleteFailures.get(failKey) || 0) + 1;
         forgeCompleteFailures.set(failKey, failures);
-        const delayMs = error.statusCode === 400 ? 30000 : 1000;
-        await refreshForgeAfterUncertainWrite(accountId, "forge.complete.write", error, { workshop: action.workshop, heroId: action.heroId, heroActionState: heroBeforeComplete ? Number(heroBeforeComplete.actionState) : null, heroCanComplete: heroBeforeComplete?.canComplete ?? null, completeFailures: failures, willSkip: failures >= FORGE_COMPLETE_SKIP_THRESHOLD });
+        const willSkip = failures >= FORGE_COMPLETE_SKIP_THRESHOLD;
+        const delayMs = willSkip ? 2000 : error.statusCode === 400 ? 30000 : 1000;
+        if (willSkip) log(`鍛造坊 ${action.workshop} 完成鍛造失敗，跳過此英雄繼續`, accountId);
+        await refreshForgeAfterUncertainWrite(accountId, "forge.complete.write", error, { workshop: action.workshop, heroId: action.heroId, heroActionState: heroBeforeComplete ? Number(heroBeforeComplete.actionState) : null, heroCanComplete: heroBeforeComplete?.canComplete ?? null, completeFailures: failures, willSkip });
         if (state.forgeRunning) forgeSchedule(delayMs, accountId);
         return;
       }
@@ -671,6 +674,7 @@ async function forgeTurn(accountId) {
         forgeWorkshopErrors.set(`${accountId}:${workshop}`, validated.error);
         saveForgeDraft(accountId, { ...draft, enabled: false });
         recordForgeDebug(accountId, "forge.start.auto-disabled", { workshop: Number(workshop), heroId: String(draft.heroId || ""), reason: validated.error });
+        log(`鍛造坊 ${workshop} 已自動取消勾選：${validated.error}`, accountId);
         if (accountId === activeId) renderForgeSettings(accountId);
       }
       if (!candidate) { recordForgeDebug(accountId, "forge.start.no-candidate", {}); forgeSchedule(30000, accountId); return; }
@@ -683,6 +687,7 @@ async function forgeTurn(accountId) {
         if (!hero || (Number(hero.actionState) !== 4 && Number(hero.actionState) !== 5) || Number(hero.actionTarget) !== Number(workshop)) throw new Error("開始鍛造後最新狀態未確認派工");
         recordForgeDebug(accountId, "forge.start.confirmed", { workshop: Number(workshop), heroId: validated.hero.id, type: validated.type.id, materialTotal: validated.materialTotal });
         forgeWorkshopErrors.delete(`${accountId}:${workshop}`);
+        log(`鍛造坊 ${workshop} 開始鍛造（${safe(validated.type.name)}，材料 ${validated.materialTotal} 件）`, accountId);
         forgeSchedule(2000, accountId);
       } catch (error) { await refreshForgeAfterUncertainWrite(accountId, "forge.start.write", error, { workshop: Number(workshop), heroId: validated.hero.id }); if (state.forgeRunning) forgeSchedule(30000, accountId); }
       return;
