@@ -367,19 +367,32 @@ function validateForgeDraft(draft, { workshops, heroes, mines, types }) {
   return { ok: true, materialTotal, type, hero, selectedMines: [...merged].map(([itemId, quantity]) => ({ itemId: Number(itemId), quantity })) };
 }
 function nextForgeAction({ workshops, heroes, drafts }) {
+  // 1. 先完成可完成的鍛造
+  for (const hero of heroes || []) {
+    const as = Number(hero.actionState);
+    if (as === 4 && hero.canComplete === true) return { kind: "complete", workshop: Number(hero.actionTarget), heroId: hero.id };
+  }
+  // 2. 收集佔用中的鍛造坊，找最近完成時間
+  const occupiedWorkshops = new Set();
+  let soonestWait = null;
   for (const hero of heroes || []) {
     const as = Number(hero.actionState);
     if (as !== 4 && as !== 5) continue;
-    const workshop = Number(hero.actionTarget);
-    if (as === 4 && hero.canComplete === true) return { kind: "complete", workshop, heroId: hero.id };
-    if (hero.actionCompleteTime) return { kind: "wait", workshop, heroId: hero.id, actionCompleteTime: hero.actionCompleteTime };
+    occupiedWorkshops.add(Number(hero.actionTarget));
+    if (hero.actionCompleteTime && (!soonestWait || Date.parse(hero.actionCompleteTime) < Date.parse(soonestWait.actionCompleteTime)))
+      soonestWait = { workshop: Number(hero.actionTarget), heroId: hero.id, actionCompleteTime: hero.actionCompleteTime };
   }
+  // 3. 找空坊 + 空閒英雄 + 有效設定 → 開始新鍛造
+  const eligibleHeroes = forgeEligibleHeroes(heroes);
   for (const workshop of workshops || []) {
+    if (occupiedWorkshops.has(Number(workshop))) continue;
     const draft = drafts?.[workshop];
     if (!draft?.enabled) continue;
-    const hero = forgeEligibleHeroes(heroes).find((entry) => String(entry.id) === String(draft.heroId));
+    const hero = eligibleHeroes.find((entry) => String(entry.id) === String(draft.heroId));
     if (hero && String(draft.name || "").trim() && draft.type && Array.isArray(draft.selectedMines) && draft.selectedMines.length) return { kind: "start", workshop: Number(workshop), heroId: hero.id };
   }
+  // 4. 無可開始的坊 → 等最近完成的鍛造
+  if (soonestWait) return { kind: "wait", ...soonestWait };
   return { kind: "idle" };
 }
 function loadForgeDebugLogs() {
@@ -632,23 +645,26 @@ async function forgeTurn(accountId) {
       return;
     }
     if (action.kind === "start") {
+      const occupiedWorkshops = new Set((state.heroes || []).filter((h) => { const as = Number(h.actionState); return as === 4 || as === 5; }).map((h) => Number(h.actionTarget)));
       let candidate = null;
       for (const workshop of workshops) {
+        if (occupiedWorkshops.has(Number(workshop))) { recordForgeDebug(accountId, "forge.start.skipped", { workshop: Number(workshop), reason: "鍛造坊已有進行中的鍛造" }); continue; }
         const draft = drafts[workshop];
         if (!draft?.enabled) continue;
         const validated = validateForgeDraft(draft, { workshops, heroes: state.heroes, mines: state.forgeMines, types: state.forgeTypes });
         if (validated.ok) { candidate = { workshop, draft, validated }; break; }
-        recordForgeDebug(accountId, "forge.start.skipped", { workshop: Number(workshop), reason: validated.error });
+        recordForgeDebug(accountId, "forge.start.skipped", { workshop: Number(workshop), heroId: String(draft.heroId || ""), reason: validated.error });
       }
-      if (!candidate) { forgeSchedule(30000, accountId); return; }
+      if (!candidate) { recordForgeDebug(accountId, "forge.start.no-candidate", {}); forgeSchedule(30000, accountId); return; }
       const { workshop, draft, validated } = candidate;
+      recordForgeDebug(accountId, "forge.start.attempt", { workshop: Number(workshop), heroId: validated.hero.id, type: validated.type.id, typeName: validated.type.name, materialTotal: validated.materialTotal, selectedMines: validated.selectedMines });
       try {
         await request("/forge", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ heroId: validated.hero.id, target: Number(workshop), name: draft.name.trim(), type: draft.type, selectedMines: validated.selectedMines }) }, accountId);
         await refreshForgeData(accountId);
         const hero = state.heroes.find((entry) => String(entry.id) === String(validated.hero.id));
         if (!hero || (Number(hero.actionState) !== 4 && Number(hero.actionState) !== 5) || Number(hero.actionTarget) !== Number(workshop)) throw new Error("開始鍛造後最新狀態未確認派工");
-        recordForgeDebug(accountId, "forge.start.confirmed", { workshop: Number(workshop), materialTotal: validated.materialTotal });
-        forgeSchedule(forgeWaitMs(hero.actionCompleteTime), accountId);
+        recordForgeDebug(accountId, "forge.start.confirmed", { workshop: Number(workshop), heroId: validated.hero.id, type: validated.type.id, materialTotal: validated.materialTotal });
+        forgeSchedule(2000, accountId);
       } catch (error) { await refreshForgeAfterUncertainWrite(accountId, "forge.start.write", error, { workshop: Number(workshop), heroId: validated.hero.id }); if (state.forgeRunning) forgeSchedule(30000, accountId); }
       return;
     }
