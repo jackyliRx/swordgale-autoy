@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.8";
+const uiVersion = "0.8.9";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -618,7 +618,7 @@ async function fillForgeHeroSp(accountId, workshop, hero) {
     const available = itemQuantity(itemById(item.id, accountId));
     if (available <= 0) break;
     const needed = Math.ceil((fullSp - currentSp) / Number(item.healSp));
-    const quantity = Math.min(needed, maxPerUse, available);
+    const quantity = needed >= maxPerUse ? Math.min(maxPerUse, available) : 1;
     try {
       const result = await request(`/items/${encodeURIComponent(item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity, heroId: hero.id }) }, accountId);
       used += quantity;
