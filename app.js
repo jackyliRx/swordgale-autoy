@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.31";
+const uiVersion = "0.8.8";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -608,23 +608,28 @@ async function refreshForgeAfterUncertainWrite(accountId, event, error, extra = 
 async function fillForgeHeroSp(accountId, workshop, hero) {
   const draft = forgeDraftForWorkshop(accountId, workshop);
   const item = draft.recoveryItemId ? itemById(draft.recoveryItemId, accountId) : null;
-  if (!item) return;
+  if (!item || !Number(item.healSp)) return;
+  const fullSp = Number(hero.fullSp);
+  let currentSp = Number(hero.sp);
+  if (currentSp >= fullSp) return;
+  const maxPerUse = Number(item.maxUseQuantity) || 10;
   let used = 0;
-  while (true) {
-    const currentHero = runtimeFor(accountId).heroes.find((h) => String(h.id) === String(hero.id));
-    if (!currentHero || Number(currentHero.sp) >= Number(currentHero.fullSp)) break;
-    const latestItem = itemById(item.id, accountId);
-    if (!latestItem || itemQuantity(latestItem) <= 0) break;
+  while (currentSp < fullSp) {
+    const available = itemQuantity(itemById(item.id, accountId));
+    if (available <= 0) break;
+    const needed = Math.ceil((fullSp - currentSp) / Number(item.healSp));
+    const quantity = Math.min(needed, maxPerUse, available);
     try {
-      await request(`/items/${encodeURIComponent(item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity: 1, heroId: hero.id }) }, accountId);
-      await refreshForgeData(accountId);
-      used++;
+      const result = await request(`/items/${encodeURIComponent(item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity, heroId: hero.id }) }, accountId);
+      used += quantity;
+      currentSp = Number(result?.hero?.sp ?? fullSp);
     } catch (error) {
       await refreshForgeAfterUncertainWrite(accountId, "forge.prefill-sp.write", error);
       break;
     }
   }
   if (used > 0) {
+    await refreshForgeData(accountId);
     recordForgeDebug(accountId, "forge.prefill-sp.completed", { workshop: Number(workshop), used });
     log(`鍛造坊 ${workshop} 開始前補充 SP（${used} 件）`, accountId);
   }
