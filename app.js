@@ -579,8 +579,8 @@ function forgeWaitMs(actionCompleteTime) {
 function forgeDrafts(accountId, workshops) {
   return Object.fromEntries((workshops || []).map((workshop) => [workshop, forgeDraftForWorkshop(accountId, workshop)]));
 }
-async function refreshForgeAfterUncertainWrite(accountId, event, error) {
-  recordForgeDebug(accountId, event, { outcome: "uncertain", error: String(error?.message || error).slice(0, 160) });
+async function refreshForgeAfterUncertainWrite(accountId, event, error, extra = {}) {
+  recordForgeDebug(accountId, event, { outcome: "uncertain", error: String(error?.message || error).slice(0, 160), ...extra });
   try { await refreshForgeData(accountId); }
   catch (refreshError) { recordForgeDebug(accountId, `${event}.refresh-failed`, { error: String(refreshError?.message || refreshError).slice(0, 160) }); }
 }
@@ -614,16 +614,17 @@ async function forgeTurn(accountId) {
     const action = nextForgeAction({ workshops, heroes: state.heroes, drafts });
     if (action.kind === "wait") { recordForgeDebug(accountId, "forge.wait", { workshop: action.workshop, waitMs: forgeWaitMs(action.actionCompleteTime) }); forgeSchedule(forgeWaitMs(action.actionCompleteTime), accountId); return; }
     if (action.kind === "complete") {
+      const heroBeforeComplete = state.heroes.find((entry) => String(entry.id) === String(action.heroId));
       try {
         await request(`/heroes/${encodeURIComponent(action.heroId)}/completeForge`, { method: "POST" }, accountId);
         await refreshForgeData(accountId);
         const hero = state.heroes.find((entry) => String(entry.id) === String(action.heroId));
         if (hero && (Number(hero.actionState) === 4 || Number(hero.actionState) === 5)) throw new Error("完成鍛造後最新狀態仍顯示鍛造中");
-        recordForgeDebug(accountId, "forge.complete.confirmed", { workshop: action.workshop });
+        recordForgeDebug(accountId, "forge.complete.confirmed", { workshop: action.workshop, heroId: action.heroId });
         if (hero) await useForgeRecoveryItem(accountId, action.workshop, hero);
       } catch (error) {
         const delayMs = error.statusCode === 400 ? 30000 : 1000;
-        await refreshForgeAfterUncertainWrite(accountId, "forge.complete.write", error);
+        await refreshForgeAfterUncertainWrite(accountId, "forge.complete.write", error, { workshop: action.workshop, heroId: action.heroId, heroActionState: heroBeforeComplete ? Number(heroBeforeComplete.actionState) : null, heroCanComplete: heroBeforeComplete?.canComplete ?? null });
         if (state.forgeRunning) forgeSchedule(delayMs, accountId);
         return;
       }
@@ -648,7 +649,7 @@ async function forgeTurn(accountId) {
         if (!hero || (Number(hero.actionState) !== 4 && Number(hero.actionState) !== 5) || Number(hero.actionTarget) !== Number(workshop)) throw new Error("開始鍛造後最新狀態未確認派工");
         recordForgeDebug(accountId, "forge.start.confirmed", { workshop: Number(workshop), materialTotal: validated.materialTotal });
         forgeSchedule(forgeWaitMs(hero.actionCompleteTime), accountId);
-      } catch (error) { await refreshForgeAfterUncertainWrite(accountId, "forge.start.write", error); if (state.forgeRunning) forgeSchedule(30000, accountId); }
+      } catch (error) { await refreshForgeAfterUncertainWrite(accountId, "forge.start.write", error, { workshop: Number(workshop), heroId: validated.hero.id }); if (state.forgeRunning) forgeSchedule(30000, accountId); }
       return;
     }
     forgeSchedule(30000, accountId);
