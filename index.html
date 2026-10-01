@@ -8,7 +8,7 @@
   </head>
   <body>
     <main class="app-shell">
-      <header><h1>Autoy</h1><p>多角色自動狩獵</p><span class="badge app-version">v0.7.46</span></header>
+      <header><h1>Autoy</h1><p>多角色自動狩獵</p><span class="badge app-version">v0.8</span></header>
       <div class="workspace">
         <aside class="card sidebar" id="hero-panel">
           <div class="heading"><h2>角色</h2><span id="party-summary" class="badge">尚未讀取</span></div>
@@ -52,6 +52,6 @@
     <dialog id="forge-debug-dialog"><div class="dialog-heading"><h2>鍛造除錯</h2><div class="actions"><label class="checkbox-setting"><input id="forge-debug-enabled" type="checkbox" /> 啟用鍛造除錯紀錄</label><button id="copy-forge-debug">複製 JSON</button><button id="clear-forge-debug">清除</button><button data-close-dialog>關閉</button></div></div><p class="hint">預設關閉。只在勾選後記錄鍛造資料讀取、驗證、開始、完成與錯誤摘要；不保存 token、Cookie、角色名稱、裝備名稱、完整 request／response。</p><pre id="forge-debug-log-list"></pre></dialog>
 
     <dialog id="reports-dialog"><div class="dialog-heading"><h2>狩獵戰報</h2><div class="actions"><button id="refresh-reports">讀取戰報</button><button data-close-dialog>關閉</button></div></div><p class="hint">只在按下「讀取戰報」時請求列表；點選戰報後才讀取單筆詳情並在遊戲端標記已閱。</p><div class="report-layout"><div id="report-list" class="report-list">尚未讀取戰報。</div><article id="report-detail" class="report-detail">請從左側選擇一筆戰報。</article></div></dialog>
-    <script src="./app.js?v=0.7.46"></script>
+    <script src="./app.js?v=0.8"></script>
   </body>
 </html>
