@@ -313,7 +313,7 @@ function normalizeForgeTypesFromBundle(source) {
 }
 const forgeExpandedMap = new Map();
 const forgeCompleteFailures = new Map();
-const FORGE_COMPLETE_SKIP_THRESHOLD = 2;
+const FORGE_COMPLETE_SKIP_THRESHOLD = 1;
 function forgeExpanded(accountId) { if (!forgeExpandedMap.has(accountId)) forgeExpandedMap.set(accountId, new Set()); return forgeExpandedMap.get(accountId); }
 const MINE_CATEGORY_IDS = {
   "土石": new Set([665237, 975783, 803143, 877651, 330988, 596572, 332972, 877655, 9028823, 1289756, 803142, 803146]),
