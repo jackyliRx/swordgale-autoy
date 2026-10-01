@@ -373,7 +373,7 @@ function nextForgeAction({ workshops, heroes, drafts, skippedHeroIds = new Set()
   // 1. 先完成可完成的鍛造（跳過卡死英雄；boot scan 後只對勾選坊完成）
   for (const hero of heroes || []) {
     const as = Number(hero.actionState);
-    if ((as === 4 || as === 5) && hero.canComplete === true && !skippedHeroIds.has(String(hero.id) + ":" + (hero.actionStart || ""))) {
+    if (as === 5 && hero.canComplete === true && !skippedHeroIds.has(String(hero.id) + ":" + (hero.actionStart || ""))) {
       if (enabledCompleteOnly && !(drafts?.[Number(hero.actionTarget)]?.enabled === true)) continue;
       return { kind: "complete", workshop: Number(hero.actionTarget), heroId: hero.id };
     }
@@ -383,7 +383,7 @@ function nextForgeAction({ workshops, heroes, drafts, skippedHeroIds = new Set()
   let soonestWait = null;
   for (const hero of heroes || []) {
     const as = Number(hero.actionState);
-    if (as !== 4 && as !== 5) continue;
+    if (as !== 5) continue;
     occupiedWorkshops.add(Number(hero.actionTarget));
     if (hero.actionCompleteTime && (!soonestWait || Date.parse(hero.actionCompleteTime) < Date.parse(soonestWait.actionCompleteTime)))
       soonestWait = { workshop: Number(hero.actionTarget), heroId: hero.id, actionCompleteTime: hero.actionCompleteTime };
@@ -438,7 +438,7 @@ async function refreshForgeData(accountId = activeId) {
   state.forgeMines = normalizeForgeMines(itemsPayload) || [];
   state.forgeTypes = types;
   state.forgeDataUpdatedAt = Date.now();
-  const forgingHeroes = (state.heroes || []).filter((h) => { const as = Number(h.actionState); return as === 4 || as === 5; }).map((h) => ({ heroId: h.id, actionState: Number(h.actionState), workshop: Number(h.actionTarget), canComplete: h.canComplete ?? null, actionCompleteTime: h.actionCompleteTime ?? null }));
+  const forgingHeroes = (state.heroes || []).filter((h) => { const as = Number(h.actionState); return as === 5; }).map((h) => ({ heroId: h.id, actionState: Number(h.actionState), workshop: Number(h.actionTarget), canComplete: h.canComplete ?? null, actionCompleteTime: h.actionCompleteTime ?? null }));
   recordForgeDebug(accountId, "forge-data.refresh.completed", { workshops: forgeWorkshopsFromProfile(profile).length, typeCount: types.length, eligibleHeroCount: forgeEligibleHeroes(state.heroes).length, mineCount: state.forgeMines.length, forgingHeroes });
   if (accountId === activeId) { renderHeroes(accountId); renderForgeSettings(); }
   return state;
@@ -470,7 +470,7 @@ function renderForgeSettings(accountId = activeId) {
   const workshops = forgeWorkshopsFromProfile(state.forgeProfile);
   const eligibleHeroes = forgeEligibleHeroes(state.heroes);
   const activeForges = new Map();
-  for (const hero of state.heroes || []) { const as = Number(hero.actionState); if ((as === 4 || as === 5) && hero.actionTarget != null) activeForges.set(Number(hero.actionTarget), hero); }
+  for (const hero of state.heroes || []) { const as = Number(hero.actionState); if (as === 5 && hero.actionTarget != null) activeForges.set(Number(hero.actionTarget), hero); }
   const availableMines = state.forgeMines.filter((mine) => Number(mine.available) > 0);
   const MINE_ORDER = ["土石", "木材", "金屬", "狩獵", "其他"];
   const mineGroups = {};
@@ -644,7 +644,7 @@ async function forgeTurn(accountId) {
         await request(`/heroes/${encodeURIComponent(action.heroId)}/completeForge`, { method: "POST" }, accountId);
         await refreshForgeData(accountId);
         const hero = state.heroes.find((entry) => String(entry.id) === String(action.heroId));
-        if (hero && (Number(hero.actionState) === 4 || Number(hero.actionState) === 5)) throw new Error("完成鍛造後最新狀態仍顯示鍛造中");
+        if (hero && Number(hero.actionState) === 5) throw new Error("完成鍛造後最新狀態仍顯示鍛造中");
         recordForgeDebug(accountId, "forge.complete.confirmed", { workshop: action.workshop, heroId: action.heroId });
         log(`鍛造坊 ${action.workshop} 鍛造完成`, accountId);
         if (hero) await useForgeRecoveryItem(accountId, action.workshop, hero);
@@ -663,7 +663,7 @@ async function forgeTurn(accountId) {
       return;
     }
     if (action.kind === "start") {
-      const occupiedWorkshops = new Set((state.heroes || []).filter((h) => { const as = Number(h.actionState); return as === 4 || as === 5; }).map((h) => Number(h.actionTarget)));
+      const occupiedWorkshops = new Set((state.heroes || []).filter((h) => { const as = Number(h.actionState); return as === 5; }).map((h) => Number(h.actionTarget)));
       let candidate = null;
       for (const workshop of workshops) {
         if (occupiedWorkshops.has(Number(workshop))) { recordForgeDebug(accountId, "forge.start.skipped", { workshop: Number(workshop), reason: "鍛造坊已有進行中的鍛造" }); continue; }
