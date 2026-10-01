@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.23";
+const uiVersion = "0.7.24";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -434,8 +434,7 @@ function renderForgeSettings(accountId = activeId) {
   const state = runtimeFor(accountId);
   if (!account) return;
   if (!state.forgeDataUpdatedAt) {
-    panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">先讀取鍛造資料，再設定各鍛造坊排程；帳號開關不會取代設定。</p></div><button id="forge-refresh-data" type="button">讀取鍛造資料</button></div><div class="item-grid"><fieldset disabled><label>選擇鍛造坊<select><option>等待讀取</option></select></label><label>選擇角色<select><option>等待讀取</option></select></label><label>裝備名稱<input value="等待讀取" /></label><label>裝備類型<select><option>等待讀取</option></select></label></fieldset><fieldset disabled><strong>選擇材料</strong><label>材料<select><option>等待讀取</option></select></label><label>數量<input value="1" /></label></fieldset></div><label class="checkbox-setting"><input id="forge-enabled" type="checkbox" disabled /> 啟用此帳號自動鍛造（需先完成至少一個鍛造坊排程）</label>`;
-    $("forge-refresh-data").onclick = () => refreshForgeData(accountId).catch((error) => warn(`讀取鍛造資料失敗：${error.message || error}`, accountId));
+    panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">按「重新讀取」以載入鍛造坊資料。</p></div></div><div class="item-grid"><fieldset disabled><label>選擇鍛造坊<select><option>等待讀取</option></select></label><label>選擇角色<select><option>等待讀取</option></select></label><label>裝備名稱<input value="等待讀取" /></label><label>裝備類型<select><option>等待讀取</option></select></label></fieldset><fieldset disabled><strong>選擇材料</strong><label>材料<select><option>等待讀取</option></select></label><label>數量<input value="1" /></label></fieldset></div><label class="checkbox-setting"><input id="forge-enabled" type="checkbox" disabled /> 啟用此帳號自動鍛造（需先完成至少一個鍛造坊排程）</label>`;
     return;
   }
   const workshops = forgeWorkshopsFromProfile(state.forgeProfile);
@@ -1525,7 +1524,7 @@ function initAccountEvents() {
     log("已新增帳號；正在驗證 token", account.id);
     refreshAccount(account.id).catch((error) => warn(`讀取帳號資料失敗：${error.message || error}`, account.id));
   };
-  $("refresh").onclick = () => Promise.all([refreshAccount(activeId, { quiet: true }), refreshItems(activeId), refreshForgeData(activeId)]).then(() => { if (!stopForDeaths(activeId)) { $("alert").hidden = true; log("角色、狩獵狀態、補品背包與鍛造資料已更新"); } }).catch((error) => warn(`重新讀取失敗：${error.message || error}`, activeId));
+  $("refresh").onclick = () => Promise.all([refreshAccount(activeId, { quiet: true }), refreshItems(activeId), refreshForgeData(activeId).catch((error) => warn(`鍛造資料讀取失敗：${error.message || error}`, activeId))]).then(() => { if (!stopForDeaths(activeId)) { $("alert").hidden = true; log("角色、狩獵狀態與補品背包已更新"); } }).catch((error) => warn(`重新讀取失敗：${error.message || error}`, activeId));
   $("start").onclick = () => startRunner(activeId);
   $("stop").onclick = () => stopRunner(activeId);
   const stopAllButton = $("stop-all"); if (stopAllButton) stopAllButton.onclick = stopAll;
