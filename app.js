@@ -1226,7 +1226,7 @@ async function tryUseRecoveryItems(c, accountId) {
     const before = { hp: hero.hp, sp: hero.sp, quantity: itemQuantity(choice.item) };
     const beforeItem = itemRecoverySnapshot(choice.item);
     const beforeHero = heroRecoverySnapshot(hero);
-    let result;
+    let result, retrySucceeded = false;
     try { result = await request(`/items/${encodeURIComponent(choice.item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity: 1, heroId: hero.id }) }, accountId); }
     catch (error) {
       if (!interceptItemRecoveryIssue) {
@@ -1234,29 +1234,38 @@ async function tryUseRecoveryItems(c, accountId) {
         return true;
       }
       const requestWasAborted = error?.name === "AbortError" || /aborted a request/i.test(String(error?.message || error));
-      if (requestWasAborted) {
-        const stopReason = state.stopReason;
-        try {
-          const verifiedItems = await refreshItems(accountId);
-          const verifiedItem = (verifiedItems || []).find((item) => String(item.id) === String(choice.item.id));
-          if (classifyAbortedItemUse({ beforeQuantity: before.quantity, verifiedQuantity: verifiedItem ? itemQuantity(verifiedItem) : null }) === "consumed") {
-            try { await refresh(accountId); } catch { /* Back-pack evidence is sufficient; the normal next cycle refreshes heroes again. */ }
-            createItemRecoveryIncident(accountId, "aborted-request-resolved", "補品請求中止，但重新讀取背包確認已消耗", { item: { itemId: beforeItem.itemId, before: beforeItem, verified: itemRecoverySnapshot(verifiedItem) }, hero: { before: beforeHero, after: heroRecoverySnapshot((runtimeFor(accountId).heroes || []).find((entry) => String(entry.id) === String(hero.id))) }, error: String(error.message || error).slice(0, 160), stopReason: stopReason || null }, { status: "resolved", verify: false });
-            if (!state.running && shouldResumeAfterAbortedItemUse(stopReason)) {
-              state.running = true; state.stopReason = null;
-              state.watchdog = setInterval(() => {
-                const settings = config(accountId);
-                if (state.running && state.nextWakeAt && Date.now() > state.nextWakeAt + settings.alertMinutes * 60000) stopRunner(accountId, "超過無動作提醒時間，已停止");
-              }, 30000);
-              renderAccounts();
-            }
-            log(`${hero.name} 使用 ${choice.item.name} 的請求中止，但重新讀取背包確認已消耗；${state.running ? "繼續補品流程" : "依停止原因不自動恢復"}`, accountId);
-            return true;
+      const stopReason = state.stopReason;
+      try {
+        const verifiedItems = await refreshItems(accountId);
+        const verifiedItem = (verifiedItems || []).find((item) => String(item.id) === String(choice.item.id));
+        if (classifyAbortedItemUse({ beforeQuantity: before.quantity, verifiedQuantity: verifiedItem ? itemQuantity(verifiedItem) : null }) === "consumed") {
+          try { await refresh(accountId); } catch { /* Back-pack evidence is sufficient; the normal next cycle refreshes heroes again. */ }
+          createItemRecoveryIncident(accountId, "aborted-request-resolved", "補品請求中止，但重新讀取背包確認已消耗", { item: { itemId: beforeItem.itemId, before: beforeItem, verified: itemRecoverySnapshot(verifiedItem) }, hero: { before: beforeHero, after: heroRecoverySnapshot((runtimeFor(accountId).heroes || []).find((entry) => String(entry.id) === String(hero.id))) }, error: String(error.message || error).slice(0, 160), stopReason: stopReason || null }, { status: "resolved", verify: false });
+          if (requestWasAborted && !state.running && shouldResumeAfterAbortedItemUse(stopReason)) {
+            state.running = true; state.stopReason = null;
+            state.watchdog = setInterval(() => {
+              const settings = config(accountId);
+              if (state.running && state.nextWakeAt && Date.now() > state.nextWakeAt + settings.alertMinutes * 60000) stopRunner(accountId, "超過無動作提醒時間，已停止");
+            }, 30000);
+            renderAccounts();
           }
-        } catch { /* Preserve the original aborted-request evidence below; never resend a consumable request. */ }
+          log(`${hero.name} 使用 ${choice.item.name} 的請求${requestWasAborted ? "中止" : "失敗"}，但重新讀取背包確認已消耗；${state.running ? "繼續補品流程" : "依停止原因不自動恢復"}`, accountId);
+          return true;
+        }
+        if (!requestWasAborted) {
+          try {
+            result = await request(`/items/${encodeURIComponent(choice.item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity: 1, heroId: hero.id }) }, accountId);
+            retrySucceeded = true;
+          } catch (retryError) {
+            createItemRecoveryIncident(accountId, "use-request-failed", "使用補品 API 請求失敗（已重試一次）", { item: { itemId: beforeItem.itemId, before: beforeItem, response: null }, hero: { before: beforeHero, after: null }, error: `${String(error.message || error).slice(0, 80)} → ${String(retryError.message || retryError).slice(0, 80)}` });
+            log(`${hero.name} 使用 ${choice.item.name} 失敗（重試後仍失敗），已自動進入休息：${retryError.message || retryError}`, accountId); return false;
+          }
+        }
+      } catch { /* Preserve the original request evidence; never resend without confirming non-consumption. */ }
+      if (!retrySucceeded) {
+        createItemRecoveryIncident(accountId, "use-request-failed", "使用補品 API 請求失敗", { item: { itemId: beforeItem.itemId, before: beforeItem, response: null }, hero: { before: beforeHero, after: null }, error: String(error.message || error).slice(0, 160) });
+        log(`${hero.name} 使用 ${choice.item.name} 失敗，已自動進入休息：${error.message || error}`, accountId); return false;
       }
-      createItemRecoveryIncident(accountId, "use-request-failed", "使用補品 API 請求失敗", { item: { itemId: beforeItem.itemId, before: beforeItem, response: null }, hero: { before: beforeHero, after: null }, error: String(error.message || error).slice(0, 160) });
-      log(`${hero.name} 使用 ${choice.item.name} 失敗，已自動進入休息：${error.message || error}`, accountId); return false;
     }
     const updatedItems = normalizeItems(result.items);
     if (!updatedItems) {
@@ -1651,5 +1660,13 @@ function init() {
   render();
   if (active()) loadAccountSnapshot(activeId);
   for (const account of accounts) if (account.settings?.forgeEnabled === true) setForgeEnabled(account.id, true);
+  const pendingReverifyMs = 10 * 60 * 1000;
+  const now = Date.now();
+  for (const incident of itemRecoveryIncidents) {
+    if (incident.status !== "pending") continue;
+    const age = now - Date.parse(incident.createdAt || 0);
+    if (Number.isFinite(age) && age < pendingReverifyMs) scheduleItemRecoveryIncidentVerification(incident.incidentId, incident.timeline?.[0]?.item?.itemId, incident.accountRef);
+    else appendItemRecoveryIncident(incident.incidentId, "page-reload-timeout", { message: "頁面重新載入時已逾時，無法驗證" }, "unconfirmed");
+  }
 }
 init();
