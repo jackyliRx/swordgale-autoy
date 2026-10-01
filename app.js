@@ -464,7 +464,7 @@ function renderForgeSettings(accountId = activeId) {
   const state = runtimeFor(accountId);
   if (!account) return;
   if (!state.forgeDataUpdatedAt) {
-    panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">按「重新讀取」以載入鍛造坊資料。</p></div><div class="forge-heading-actions"><div class="actions"><button type="button" id="forge-start" class="primary" disabled>啟動鍛造</button><button type="button" id="forge-stop" class="danger" disabled>停止鍛造</button></div></div></div>`;
+    panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">按「重新讀取」以載入鍛造坊資料。</p></div><div class="forge-heading-actions"><button type="button" id="forge-start" class="primary" disabled>啟動鍛造</button></div></div>`;
     return;
   }
   const workshops = forgeWorkshopsFromProfile(state.forgeProfile);
@@ -491,9 +491,9 @@ function renderForgeSettings(accountId = activeId) {
     return `<div class="forge-workshop-card${collapsed ? " collapsed" : ""}" data-w="${w}"><div class="forge-workshop-header"><label class="forge-workshop-header-label"><input type="checkbox" data-forge-job-enabled="${w}" ${draft.enabled ? "checked" : ""} /><strong>鍛造坊 ${w}</strong>${workshopError ? ` <span class="forge-workshop-error">⚠ ${safe(workshopError)}</span>` : ""}</label>${statusText ? `<span class="forge-workshop-status">${statusText}</span>` : ""}<button type="button" data-forge-toggle="${w}" class="forge-toggle-btn" aria-label="展開或收合">▲</button></div><div class="forge-workshop-settings"><label class="forge-copy-row">從其他鍛造坊複製<select data-forge-copy="${w}">${copyOpts}</select></label><label>選擇角色<select data-forge-hero="${w}">${heroOptions}</select></label><label>裝備名稱<input data-forge-name="${w}" maxlength="40" value="${safe(draft.name)}" /></label><label>裝備類型<select data-forge-type="${w}">${typeOptions}</select></label><label>完成後 SP 補品<select data-forge-recovery="${w}">${recoveryOpts}</select></label><div class="forge-material-section"><strong>選擇材料</strong><p class="hint" style="margin:2px 0 6px">找不到材料？未分類的新材料會出現在下拉選單的「其他」群組。</p><div class="forge-material-add"><label>材料<select data-forge-material="${w}">${groupedMineOptions}</select></label><label>數量<input data-forge-qty="${w}" type="number" min="1" value="1" /></label><button type="button" data-forge-add="${w}">加入</button></div><ul>${selectedList}</ul></div></div></div>`;
   }).join("");
   const allExpanded = workshops.every((w) => forgeExpanded(accountId).has(w));
-  panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">${state.forgeRunning ? "自動鍛造執行中；不影響自動狩獵。" : "啟動前請先按上方「重新讀取」以取得最新鍛造坊狀態，再按「啟動鍛造」。"}</p></div><div class="forge-heading-actions"><button type="button" id="forge-toggle-all">${allExpanded ? "全部收合" : "全部展開"}</button><div class="actions"><button type="button" id="forge-start" class="primary" ${state.forgeRunning ? "disabled" : ""}>啟動鍛造</button><button type="button" id="forge-stop" class="danger" ${state.forgeRunning ? "" : "disabled"}>停止鍛造</button></div></div></div>${workshopCards}<p class="hint">更新時間：${safe(new Date(state.forgeDataUpdatedAt).toLocaleTimeString())}。每次開始與完成前都會重新讀取並驗證；不確定寫入結果時只重讀、不重送。</p>`;
-  $("forge-start").onclick = () => setForgeEnabled(accountId, true);
-  $("forge-stop").onclick = () => setForgeEnabled(accountId, false);
+  panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">${state.forgeRunning ? "自動鍛造執行中；不影響自動狩獵。" : "啟動前請先按上方「重新讀取」以取得最新鍛造坊狀態，再按「啟動鍛造」。"}</p></div><div class="forge-heading-actions"><button type="button" id="forge-toggle-all">${allExpanded ? "全部收合" : "全部展開"}</button>${state.forgeRunning ? `<button type="button" id="forge-stop" class="danger">停止鍛造</button>` : `<button type="button" id="forge-start" class="primary">啟動鍛造</button>`}</div></div>${workshopCards}<p class="hint">更新時間：${safe(new Date(state.forgeDataUpdatedAt).toLocaleTimeString())}。每次開始與完成前都會重新讀取並驗證；不確定寫入結果時只重讀、不重送。</p>`;
+  if ($("forge-start")) $("forge-start").onclick = () => setForgeEnabled(accountId, true);
+  if ($("forge-stop")) $("forge-stop").onclick = () => setForgeEnabled(accountId, false);
   $("forge-toggle-all").onclick = () => {
     const expanded = forgeExpanded(accountId);
     const allExp = workshops.every((w) => expanded.has(w));
