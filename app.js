@@ -1,12 +1,11 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.24";
+const uiVersion = "0.7.25";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
 const itemRecoveryTimelineLimit = 30;
 const forgeDebugLogKey = "autoy.forgeDebugLogs.v1";
 const forgeDebugLogLimit = 200;
-const forgeTypesKey = "autoy.forgeTypes.v1";
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let itemRecoveryIncidents = loadItemRecoveryIncidents();
 let forgeDebugLogs = loadForgeDebugLogs();
@@ -313,11 +312,17 @@ function normalizeForgeTypesFromBundle(source) {
   return types;
 }
 function loadStoredForgeTypes() {
-  try {
-    const value = JSON.parse(localStorage.getItem(forgeTypesKey) || "null");
-    if (Array.isArray(value) && value.length) return value;
-  } catch {}
-  throw new Error("尚未取得鍛造種類清單；請在遊戲鍛造頁面開啟 Recorder 以自動取得");
+  return [
+    { id: "sword",   name: "單手劍", limit: 16 },
+    { id: "rapier",  name: "細劍",   limit: 14 },
+    { id: "dagger",  name: "短刀",   limit: 11 },
+    { id: "hammer",  name: "單手錘", limit: 16 },
+    { id: "shield",  name: "shield", limit: 0  },
+    { id: "thsword", name: "thsword",limit: 0  },
+    { id: "katana",  name: "太刀",   limit: 20 },
+    { id: "axe",     name: "axe",    limit: 0  },
+    { id: "spear",   name: "spear",  limit: 0  },
+  ];
 }
 function validateForgeDraft(draft, { workshops, heroes, mines, types }) {
   const workshop = Number(draft?.workshop);
@@ -346,7 +351,8 @@ function validateForgeDraft(draft, { workshops, heroes, mines, types }) {
 }
 function nextForgeAction({ workshops, heroes, drafts }) {
   for (const hero of heroes || []) {
-    if (Number(hero.actionState) !== 4) continue;
+    const as = Number(hero.actionState);
+    if (as !== 4 && as !== 5) continue;
     const workshop = Number(hero.actionTarget);
     if (hero.canComplete === true) return { kind: "complete", workshop, heroId: hero.id };
     if (hero.actionCompleteTime) return { kind: "wait", workshop, heroId: hero.id, actionCompleteTime: hero.actionCompleteTime };
@@ -529,7 +535,7 @@ async function forgeTurn(accountId) {
         await request(`/heroes/${encodeURIComponent(action.heroId)}/completeForge`, { method: "POST" }, accountId);
         await refreshForgeData(accountId);
         const hero = state.heroes.find((entry) => String(entry.id) === String(action.heroId));
-        if (hero && Number(hero.actionState) === 4) throw new Error("完成鍛造後最新狀態仍顯示鍛造中");
+        if (hero && (Number(hero.actionState) === 4 || Number(hero.actionState) === 5)) throw new Error("完成鍛造後最新狀態仍顯示鍛造中");
         recordForgeDebug(accountId, "forge.complete.confirmed", { workshop: action.workshop });
         if (hero) await useForgeRecoveryItem(accountId, action.workshop, hero);
       } catch (error) { await refreshForgeAfterUncertainWrite(accountId, "forge.complete.write", error); }
@@ -551,7 +557,7 @@ async function forgeTurn(accountId) {
         await request("/forge", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ heroId: validated.hero.id, target: Number(workshop), name: draft.name.trim(), type: draft.type, selectedMines: validated.selectedMines }) }, accountId);
         await refreshForgeData(accountId);
         const hero = state.heroes.find((entry) => String(entry.id) === String(validated.hero.id));
-        if (!hero || Number(hero.actionState) !== 4 || Number(hero.actionTarget) !== Number(workshop)) throw new Error("開始鍛造後最新狀態未確認派工");
+        if (!hero || (Number(hero.actionState) !== 4 && Number(hero.actionState) !== 5) || Number(hero.actionTarget) !== Number(workshop)) throw new Error("開始鍛造後最新狀態未確認派工");
         recordForgeDebug(accountId, "forge.start.confirmed", { workshop: Number(workshop), materialTotal: validated.materialTotal });
         forgeSchedule(forgeWaitMs(hero.actionCompleteTime), accountId);
       } catch (error) { await refreshForgeAfterUncertainWrite(accountId, "forge.start.write", error); if (state.forgeRunning) forgeSchedule(30000, accountId); }
