@@ -21,6 +21,7 @@
 | 前往大草原（啟動移動） | `POST /api/move/1` | [前往大草原](前往大草原.md) | `前往大草原.json` |
 | 前往大草原－完成行動 | `POST /api/move/complete` | [前往大草原－完成行動](前往大草原-完成行動.md) | `前往大草原-完成行動.json` |
 | 活人驗證 | `GET /api/captcha`、`POST /api/captcha/verify` | [活人驗證](活人驗證.md) | `tools/活人驗證.json` |
+| 鍛造－英雄與背包狀態 | `GET /api/profile`、`GET /api/heroes`、`GET /api/items`、`GET /api/heroes/{id}/statuses` | [鍛造－英雄與背包狀態](鍛造-英雄與背包狀態.md) | `autoy-api-recorder-2026-10-01T02-35-58-528Z.json` |
 
 ## 錄製方式
 

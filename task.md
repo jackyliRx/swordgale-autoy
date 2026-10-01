@@ -67,11 +67,14 @@
   - 成功後英雄回到閒置：`actionState: 0`、`actionTarget: null`，不再帶有鍛造的開始／完成時間欄位。
 - 狀態確認：`GET /api/heroes/{heroId}/statuses`，已錄得空狀態回應；它不能單獨證明鍛造材料或成品結果。
 - 背包資料：`GET /api/items` 回傳 `mines` 與 `items` 的 `id`、`quantity`、`available`，可供鍛造前後材料快照比較。
+- 英雄與背包狀態：`GET /api/profile`（`forgeExpanded` 決定鍛造坊數）、`GET /api/heroes`（`actionState: 4` 為鍛造進行中）、`GET /api/items`（`items` + `mines` 完整欄位）均已錄製確認。
 
 ### 實作前仍須補齊的資料
 
 - 每一種裝備類型的合法 `type` 值與材料總數上限；目前只確認太刀上限為 20。
 - `target` 的鍛造坊對照表與可選範圍。
+- **鍛造進行中 `actionState` 已確認為 `4`**（先前原型誤用 `5`，已於 v0.7.21 修正）。
+- `forgeExpanded: N` → 鍛造坊 `target` 1 至 `N+1`（已由 profile 錄製確認）。
 - 伺服器如何回報成品裝備、品質／屬性與失敗情況；現有開始鍛造回應只有英雄與背包快照。
 - 材料實際扣除的時點（開始或完成）與失敗時的扣料規則。
 - 開始鍛造的安全防護：角色必須閒置、材料庫存足夠、名稱與類型有效、材料數量不超過該類型上限；任一項不符不得送出寫入請求。
