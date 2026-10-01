@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.29";
+const uiVersion = "0.7.30";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -317,12 +317,14 @@ function loadStoredForgeTypes() {
     { id: "rapier",  name: "細劍",   limit: 14 },
     { id: "dagger",  name: "短刀",   limit: 11 },
     { id: "hammer",  name: "單手錘", limit: 16 },
-    { id: "shield",  name: "shield", limit: 0  },
-    { id: "thsword", name: "thsword",limit: 0  },
+    { id: "shield",  name: "盾牌",   limit: 16 },
+    { id: "thsword", name: "雙手劍", limit: 22 },
     { id: "katana",  name: "太刀",   limit: 20 },
     { id: "axe",     name: "雙手斧", limit: 22 },
     { id: "spear",   name: "長槍",   limit: 18 },
     { id: "helmet",  name: "頭盔",   limit: 16 },
+    { id: "hat",     name: "帽子",   limit: 10 },
+    { id: "armor",   name: "盔甲",   limit: 16 },
   ];
 }
 function validateForgeDraft(draft, { workshops, heroes, mines, types }) {
