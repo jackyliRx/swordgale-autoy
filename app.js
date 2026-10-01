@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.7.26";
+const uiVersion = "0.7.27";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -407,6 +407,17 @@ async function refreshForgeData(accountId = activeId) {
   state.forgeDraft.workshop = workshops.includes(Number(state.forgeDraft.workshop)) ? Number(state.forgeDraft.workshop) : workshops[0] || 1;
   const saved = forgeDraftForWorkshop(accountId, state.forgeDraft.workshop);
   state.forgeDraft = { ...state.forgeDraft, ...saved, workshop: state.forgeDraft.workshop };
+  const forgingHeroes = (state.heroes || []).filter((h) => { const as = Number(h.actionState); return (as === 4 || as === 5) && h.actionTarget != null; });
+  const currentHasForge = forgingHeroes.some((h) => Number(h.actionTarget) === state.forgeDraft.workshop);
+  const currentHasSettings = Boolean(state.forgeDraft.heroId) || state.forgeDraft.selectedMines.length > 0;
+  if (!currentHasForge && !currentHasSettings && forgingHeroes.length > 0) {
+    const firstTarget = Number(forgingHeroes[0].actionTarget);
+    if (workshops.includes(firstTarget)) {
+      state.forgeDraft.workshop = firstTarget;
+      const activeSaved = forgeDraftForWorkshop(accountId, firstTarget);
+      state.forgeDraft = { ...state.forgeDraft, ...activeSaved, workshop: firstTarget };
+    }
+  }
   if (!state.forgeDraft.heroId) state.forgeDraft.heroId = String(heroes[0]?.id || "");
   if (!state.forgeDraft.type) state.forgeDraft.type = types[0]?.id || "";
   recordForgeDebug(accountId, "forge-data.refresh.completed", { workshops: forgeWorkshopsFromProfile(profile).length, typeCount: types.length, eligibleHeroCount: forgeEligibleHeroes(state.heroes).length, mineCount: state.forgeMines.length });
