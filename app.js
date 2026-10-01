@@ -373,7 +373,7 @@ function nextForgeAction({ workshops, heroes, drafts, skippedHeroIds = new Set()
   // 1. 先完成可完成的鍛造（跳過卡死英雄；boot scan 後只對勾選坊完成）
   for (const hero of heroes || []) {
     const as = Number(hero.actionState);
-    if (hero.canComplete === true && !skippedHeroIds.has(String(hero.id))) {
+    if ((as === 4 || as === 5) && hero.canComplete === true && !skippedHeroIds.has(String(hero.id) + ":" + (hero.actionStart || ""))) {
       if (enabledCompleteOnly && !(drafts?.[Number(hero.actionTarget)]?.enabled === true)) continue;
       return { kind: "complete", workshop: Number(hero.actionTarget), heroId: hero.id };
     }
@@ -636,7 +636,7 @@ async function forgeTurn(accountId) {
     const enabledCompleteOnly = state.forgeBootScanned === true;
     const action = nextForgeAction({ workshops, heroes: state.heroes, drafts, skippedHeroIds: skippedCompleteHeroes, enabledCompleteOnly });
     if (!state.forgeBootScanned && action.kind !== "complete") state.forgeBootScanned = true;
-    recordForgeDebug(accountId, "forge.turn.action", { kind: action.kind, heroId: action.heroId ?? null, workshop: action.workshop ?? null, actionCompleteTime: action.actionCompleteTime ?? null, ...(skippedCompleteHeroes.size ? { skippedCompleteHeroes: [...skippedCompleteHeroes] } : {}) });
+    recordForgeDebug(accountId, "forge.turn.action", { kind: action.kind, heroId: action.heroId ?? null, workshop: action.workshop ?? null, actionCompleteTime: action.actionCompleteTime ?? null, ...(skippedCompleteHeroes.size ? { skippedCompleteHeroes: [...skippedCompleteHeroes].map((s) => s.split(":")[0]) } : {}) });
     if (action.kind === "wait") { recordForgeDebug(accountId, "forge.wait", { workshop: action.workshop, waitMs: forgeWaitMs(action.actionCompleteTime) }); forgeSchedule(forgeWaitMs(action.actionCompleteTime), accountId); return; }
     if (action.kind === "complete") {
       const heroBeforeComplete = state.heroes.find((entry) => String(entry.id) === String(action.heroId));
@@ -649,7 +649,7 @@ async function forgeTurn(accountId) {
         log(`鍛造坊 ${action.workshop} 鍛造完成`, accountId);
         if (hero) await useForgeRecoveryItem(accountId, action.workshop, hero);
       } catch (error) {
-        const failKey = `${accountId}:${action.heroId}`;
+        const failKey = `${accountId}:${action.heroId}:${heroBeforeComplete?.actionStart || ""}`;
         const failures = (forgeCompleteFailures.get(failKey) || 0) + 1;
         forgeCompleteFailures.set(failKey, failures);
         const willSkip = failures >= FORGE_COMPLETE_SKIP_THRESHOLD;
