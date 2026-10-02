@@ -693,6 +693,7 @@ async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
   if (usedThisMonth >= ocilarMonthlyLimit) { log(`Ocilar 本月已達 ${ocilarMonthlyLimit} 次上限，請更換新的 API Key 並重設額度`, accountId); return false; }
   log("偵測到 hCaptcha，呼叫 Ocilar 自動解題...", accountId);
   try { await request("/captcha/display", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId }) }, accountId); } catch {}
+  log("已通知遊戲端，等待 Ocilar 解題結果...", accountId);
   try {
     const resp = await fetch("https://api.ocilar.com/api/v1/solve/hcaptcha", {
       method: "POST",
@@ -812,9 +813,12 @@ async function forgeTurn(accountId) {
     recordForgeDebug(accountId, "forge.turn.error", { error: String(error?.message || error).slice(0, 160) });
     if (error.name !== "AbortError" && error.statusCode === 403 && error.responseBody?.code === "CAPTCHA_REQUIRED") {
       try {
-        await new Promise((r) => setTimeout(r, 3000 + Math.floor(Math.random() * 5001)));
+        const preWaitMs = 3000 + Math.floor(Math.random() * 5001);
+        log(`偵測到驗證要求，等待 ${(preWaitMs / 1000).toFixed(1)}s 後處理...`, accountId);
+        await new Promise((r) => setTimeout(r, preWaitMs));
         const captchaInfo = await request("/captcha", {}, accountId);
         const challengeId = captchaInfo.pendingCaptchaId;
+        log(`驗證類型：${captchaInfo.type || "未知"}`, accountId);
         if (captchaInfo.type === "hcaptcha" && challengeId != null) {
           if (config(accountId).autoHcaptchaSolve) {
             const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
@@ -2024,9 +2028,12 @@ async function turn(accountId) {
   } catch (error) {
     if (error.name !== "AbortError" && error.statusCode === 403 && error.responseBody?.code === "CAPTCHA_REQUIRED") {
       try {
-        await new Promise((r) => setTimeout(r, 3000 + Math.floor(Math.random() * 5001)));
+        const preWaitMs = 3000 + Math.floor(Math.random() * 5001);
+        log(`偵測到驗證要求，等待 ${(preWaitMs / 1000).toFixed(1)}s 後處理...`, accountId);
+        await new Promise((r) => setTimeout(r, preWaitMs));
         const captchaInfo = await request("/captcha", {}, accountId);
         const challengeId = captchaInfo.pendingCaptchaId;
+        log(`驗證類型：${captchaInfo.type || "未知"}`, accountId);
         if (captchaInfo.type === "hcaptcha" && challengeId != null) {
           if (config(accountId).autoHcaptchaSolve) {
             const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
