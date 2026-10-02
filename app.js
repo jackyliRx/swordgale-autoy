@@ -1,14 +1,13 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.27";
+const uiVersion = "0.8.28";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
 const itemRecoveryTimelineLimit = 30;
 const forgeDebugLogKey = "autoy.forgeDebugLogs.v1";
 const forgeDebugLogLimit = 200;
-const ocilarApiKeyStore = "autoy.ocilarApiKey.v1";
-const ocilarUsageStore = "autoy.ocilarUsage.v1";
-const ocilarMonthlyLimit = 1000;
+const nonecapApiKeyStore = "autoy.nonecapApiKey.v1";
+const nonecapUsageStore = "autoy.nonecapUsage.v1";
 const hcaptchaSitekey = "181ea3ce-653a-436a-8410-1e9259e6d0bc";
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let itemRecoveryIncidents = loadItemRecoveryIncidents();
@@ -691,79 +690,47 @@ function sleepDelayMs(c) {
   if (end <= now) end.setDate(end.getDate() + 1);
   return (end - now) + Math.floor(Math.random() * 30 * 60 * 1000);
 }
-function getOcilarUsage() { try { return JSON.parse(localStorage.getItem(ocilarUsageStore) || "{}"); } catch { return {}; } }
-function saveOcilarUsage(u) { try { localStorage.setItem(ocilarUsageStore, JSON.stringify(u)); } catch {} }
-function ocilarUsageKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
-function incrementOcilarUsage() { const u = getOcilarUsage(); const k = ocilarUsageKey(); u[k] = (u[k] || 0) + 1; saveOcilarUsage(u); renderOcilarUsage(); return u[k]; }
-function renderOcilarUsage() { const el = document.getElementById("ocilar-usage"); if (!el) return; const u = getOcilarUsage(); const used = u[ocilarUsageKey()] || 0; el.textContent = `本月已用 ${used} / ${ocilarMonthlyLimit} 次`; el.style.color = used >= ocilarMonthlyLimit ? "#e87878" : used >= ocilarMonthlyLimit * 0.8 ? "#e8c078" : "#9dccff"; }
+function getNonecapUsage() { try { return JSON.parse(localStorage.getItem(nonecapUsageStore) || "{}"); } catch { return {}; } }
+function saveNonecapUsage(u) { try { localStorage.setItem(nonecapUsageStore, JSON.stringify(u)); } catch {} }
+function nonecapUsageKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
+function incrementNonecapUsage() { const u = getNonecapUsage(); const k = nonecapUsageKey(); u[k] = (u[k] || 0) + 1; saveNonecapUsage(u); renderNonecapUsage(); return u[k]; }
+function renderNonecapUsage() { const el = document.getElementById("nonecap-usage"); if (!el) return; const u = getNonecapUsage(); const used = u[nonecapUsageKey()] || 0; el.textContent = `本月已用 ${used} 次`; el.style.color = "#9dccff"; }
 async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
-  const apiKey = (localStorage.getItem(ocilarApiKeyStore) || "").trim();
-  if (!apiKey) { log("未設定 Ocilar API Key，無法自動解題", accountId); return false; }
-  const usedThisMonth = (getOcilarUsage()[ocilarUsageKey()] || 0);
-  if (usedThisMonth >= ocilarMonthlyLimit) { log(`Ocilar 本月已達 ${ocilarMonthlyLimit} 次上限，請更換新的 API Key 並重設額度`, accountId); return false; }
-  log("偵測到 hCaptcha，呼叫 Ocilar 自動解題...", accountId);
+  const apiKey = (localStorage.getItem(nonecapApiKeyStore) || "").trim();
+  if (!apiKey) { log("未設定 NoneCap API Key，無法自動解題", accountId); return false; }
+  log("偵測到 hCaptcha，呼叫 NoneCap 自動解題...", accountId);
   try { await request("/captcha/display", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId }) }, accountId); } catch {}
-  log("已通知遊戲端，等待 Ocilar 解題結果...", accountId);
-  try {
-    const resp = await fetch("https://api.ocilar.com/api/v1/solve/hcaptcha", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
-      body: JSON.stringify({ sitekey, url: API.replace(/\/api$/, "") })
-    });
+  const nonecapUrl = "https://api.nonecap.com/v1/solves?wait=30";
+  const nonecapBody = JSON.stringify({ type: "hcaptcha", sitekey, url: API.replace(/\/api$/, "") });
+  const nonecapHeaders = { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
+  async function callNonecap() {
+    const resp = await fetch(nonecapUrl, { method: "POST", headers: nonecapHeaders, body: nonecapBody });
     if (!resp.ok) {
       if (resp.status >= 500) {
-        log(`Ocilar 暫時無法使用（HTTP ${resp.status}），5 秒後重試一次...`, accountId);
+        log(`NoneCap 暫時無法使用（HTTP ${resp.status}），5 秒後重試一次...`, accountId);
         await new Promise((r) => setTimeout(r, 5000));
-        const resp2 = await fetch("https://api.ocilar.com/api/v1/solve/hcaptcha", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
-          body: JSON.stringify({ sitekey, url: API.replace(/\/api$/, "") })
-        });
-        if (!resp2.ok) { log(`Ocilar 重試失敗（HTTP ${resp2.status}）`, accountId); return false; }
-        const result2 = await resp2.json();
-        if (!result2.token) { log(`Ocilar 解題失敗：${result2.message || JSON.stringify(result2)}`, accountId); return false; }
-        log(`Ocilar 解題成功（重試，${result2.latency_ms ?? "?"}ms，消耗 ${result2.credits_used ?? "?"} 點）`, accountId);
-        const waitMs2 = 10000 + Math.floor(Math.random() * 20001);
-        log(`等待 ${(waitMs2 / 1000).toFixed(1)}s 後提交驗證...`, accountId);
-        await new Promise((r) => setTimeout(r, waitMs2));
-        const verifyResult2 = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, token: result2.token }) }, accountId);
-        if (verifyResult2?.ok !== true) return false;
-        const monthTotal2 = incrementOcilarUsage();
-        const state2 = runtimeFor(accountId);
-        state2.captchaSolveCount = (state2.captchaSolveCount || 0) + 1;
-        log(`hCaptcha 已解題 ${state2.captchaSolveCount}/${state2.captchaThreshold} 次（本月累計 ${monthTotal2}/${ocilarMonthlyLimit}）`, accountId);
-        if (state2.captchaSolveCount >= state2.captchaThreshold) {
-          const pauseMs = (10 + Math.floor(Math.random() * 21)) * 60000;
-          const pauseMin = Math.round(pauseMs / 60000);
-          const wasForgeRunning = state2.forgeRunning;
-          stopRunner(accountId, `hCaptcha 解題次數達上限，暫停 ${pauseMin} 分鐘`);
-          stopForgeRunner(accountId, `hCaptcha 解題次數達上限`);
-          log(`hCaptcha 驗證次數達上限（${state2.captchaThreshold} 次），暫停 ${pauseMin} 分鐘後自動重啟`, accountId);
-          state2.captchaSolveCount = 0;
-          state2.captchaThreshold = randomCaptchaThreshold();
-          setTimeout(() => {
-            log(`暫停結束，重啟自動狩獵${wasForgeRunning ? "與自動鍛造" : ""}`, accountId);
-            startRunner(accountId);
-            if (wasForgeRunning) setForgeEnabled(accountId, true);
-          }, pauseMs);
-          return "paused";
-        }
-        return true;
+        const resp2 = await fetch(nonecapUrl, { method: "POST", headers: nonecapHeaders, body: nonecapBody });
+        if (!resp2.ok) { log(`NoneCap 重試失敗（HTTP ${resp2.status}）`, accountId); return null; }
+        return resp2.json();
       }
-      log(`Ocilar 請求失敗（HTTP ${resp.status}）`, accountId); return false;
+      log(`NoneCap 請求失敗（HTTP ${resp.status}）`, accountId); return null;
     }
-    const result = await resp.json();
-    if (!result.token) { log(`Ocilar 解題失敗：${result.message || JSON.stringify(result)}`, accountId); return false; }
-    log(`Ocilar 解題成功（${result.latency_ms ?? "?"}ms，消耗 ${result.credits_used ?? "?"} 點）`, accountId);
-    const waitMs = 10000 + Math.floor(Math.random() * 20001);
+    return resp.json();
+  }
+  try {
+    const result = await callNonecap();
+    if (!result) return false;
+    if (result.status !== "solved" || !result.token) { log(`NoneCap 解題失敗：${result.error || JSON.stringify(result)}`, accountId); return false; }
+    log(`NoneCap 解題成功（${result.resolve_ms ?? "?"}ms）`, accountId);
+    const waitMs = 2000 + Math.floor(Math.random() * 3001);
     log(`等待 ${(waitMs / 1000).toFixed(1)}s 後提交驗證...`, accountId);
     await new Promise((r) => setTimeout(r, waitMs));
     const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, token: result.token }) }, accountId);
     if (verifyResult?.ok !== true) return false;
-    const monthTotal = incrementOcilarUsage();
+    const monthTotal = incrementNonecapUsage();
     const state = runtimeFor(accountId);
     state.captchaSolveCount = (state.captchaSolveCount || 0) + 1;
-    log(`hCaptcha 已解題 ${state.captchaSolveCount}/${state.captchaThreshold} 次（本月累計 ${monthTotal}/${ocilarMonthlyLimit}）`, accountId);
+    log(`hCaptcha 已解題 ${state.captchaSolveCount}/${state.captchaThreshold} 次（本月累計 ${monthTotal} 次）`, accountId);
     if (state.captchaSolveCount >= state.captchaThreshold) {
       const pauseMs = (10 + Math.floor(Math.random() * 21)) * 60000;
       const pauseMin = Math.round(pauseMs / 60000);
@@ -782,7 +749,7 @@ async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
     }
     return true;
   } catch (err) {
-    log(`Ocilar 呼叫失敗：${err.message || String(err)}`, accountId);
+    log(`NoneCap 呼叫失敗：${err.message || String(err)}`, accountId);
     return false;
   }
 }
@@ -2252,10 +2219,8 @@ function initAccountEvents() {
     persistSettings();
     updateHuntZoneWarning();
   });
-  const ocilarInput = $("ocilar-api-key");
-  if (ocilarInput) ocilarInput.addEventListener("change", () => { localStorage.setItem(ocilarApiKeyStore, ocilarInput.value.trim()); });
-  const ocilarResetBtn = $("ocilar-reset-usage");
-  if (ocilarResetBtn) ocilarResetBtn.addEventListener("click", () => { const u = getOcilarUsage(); delete u[ocilarUsageKey()]; saveOcilarUsage(u); renderOcilarUsage(); log("Ocilar 本月額度已重設"); });
+  const nonecapInput = $("nonecap-api-key");
+  if (nonecapInput) nonecapInput.addEventListener("change", () => { localStorage.setItem(nonecapApiKeyStore, nonecapInput.value.trim()); });
   for (const id of ["target-stage", "hp-target", "sp-target", "rest-hp-target", "rest-sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console", "item-recovery-incident-enabled", "forge-debug-enabled", "auto-captcha-verify", "auto-hcaptcha-solve", "human-like", "sleep-start", "sleep-end"]) $(id).addEventListener("change", () => {
     persistSettings();
     if (id === "target-stage") updateHuntZoneWarning();
@@ -2267,9 +2232,9 @@ function initAccountEvents() {
 }
 function init() {
   initAccountEvents();
-  const ocilarInput = $("ocilar-api-key");
-  if (ocilarInput) ocilarInput.value = localStorage.getItem(ocilarApiKeyStore) || "";
-  renderOcilarUsage();
+  const nonecapInput = $("nonecap-api-key");
+  if (nonecapInput) nonecapInput.value = localStorage.getItem(nonecapApiKeyStore) || "";
+  renderNonecapUsage();
   if (active()) loadSettings();
   render();
   if (active()) loadAccountSnapshot(activeId);
