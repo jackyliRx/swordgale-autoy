@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.16";
+const uiVersion = "0.8.17";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -467,7 +467,8 @@ function renderForgeSettings(accountId = activeId) {
   const state = runtimeFor(accountId);
   if (!account) return;
   if (!state.forgeDataUpdatedAt) {
-    panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">按「重新讀取」以載入鍛造坊資料。</p></div><div class="forge-heading-actions"><button type="button" id="forge-start" class="primary" disabled>啟動鍛造</button></div></div>`;
+    panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">按「重新讀取」以載入鍛造坊資料。</p></div><div class="forge-heading-actions"><button type="button" id="forge-start" class="primary" disabled>啟動鍛造</button><button type="button" class="section-toggle">收起</button></div></div>`;
+    applySectionToggle(panel);
     return;
   }
   const workshops = forgeWorkshopsFromProfile(state.forgeProfile);
@@ -494,7 +495,8 @@ function renderForgeSettings(accountId = activeId) {
     return `<div class="forge-workshop-card${collapsed ? " collapsed" : ""}" data-w="${w}"><div class="forge-workshop-header"><label class="forge-workshop-header-label"><input type="checkbox" data-forge-job-enabled="${w}" ${draft.enabled ? "checked" : ""} /><strong>鍛造坊 ${w}</strong>${workshopError ? ` <span class="forge-workshop-error">⚠ ${safe(workshopError)}</span>` : ""}</label>${statusText ? `<span class="forge-workshop-status">${statusText}</span>` : ""}<button type="button" data-forge-toggle="${w}" class="forge-toggle-btn" aria-label="展開或收合">▲</button></div><div class="forge-workshop-settings"><label class="forge-copy-row">從其他鍛造坊複製<select data-forge-copy="${w}">${copyOpts}</select></label><label>選擇角色<select data-forge-hero="${w}">${heroOptions}</select></label><label>裝備名稱<input data-forge-name="${w}" maxlength="40" value="${safe(draft.name)}" /></label><label>裝備類型<select data-forge-type="${w}">${typeOptions}</select></label><label>完成後 SP 補品<select data-forge-recovery="${w}">${recoveryOpts}</select></label><div class="forge-material-section"><strong>選擇材料</strong><p class="hint" style="margin:2px 0 6px">找不到材料？未分類的新材料會出現在下拉選單的「其他」群組。</p><div class="forge-material-add"><label>材料<select data-forge-material="${w}">${groupedMineOptions}</select></label><label>數量<input data-forge-qty="${w}" type="number" min="1" value="1" /></label><button type="button" data-forge-add="${w}">加入</button></div><ul>${selectedList}</ul></div></div></div>`;
   }).join("");
   const allExpanded = workshops.every((w) => forgeExpanded(accountId).has(w));
-  panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">${state.forgeRunning ? "自動鍛造執行中；不影響自動狩獵。" : "啟動前請先按上方「重新讀取」以取得最新鍛造坊狀態，再按「啟動鍛造」。"}</p></div><div class="forge-heading-actions"><button type="button" id="forge-toggle-all">${allExpanded ? "全部收合" : "全部展開"}</button>${state.forgeRunning ? `<button type="button" id="forge-stop" class="danger">停止鍛造</button>` : `<button type="button" id="forge-start" class="primary">啟動鍛造</button>`}</div></div>${workshopCards}<p class="hint">更新時間：${safe(new Date(state.forgeDataUpdatedAt).toLocaleTimeString())}。每次開始與完成前都會重新讀取並驗證；不確定寫入結果時只重讀、不重送。</p>`;
+  panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">${state.forgeRunning ? "自動鍛造執行中；不影響自動狩獵。" : "啟動前請先按上方「重新讀取」以取得最新鍛造坊狀態，再按「啟動鍛造」。"}</p></div><div class="forge-heading-actions"><button type="button" id="forge-toggle-all">${allExpanded ? "全部收合" : "全部展開"}</button>${state.forgeRunning ? `<button type="button" id="forge-stop" class="danger">停止鍛造</button>` : `<button type="button" id="forge-start" class="primary">啟動鍛造</button>`}<button type="button" class="section-toggle">收起</button></div></div>${workshopCards}<p class="hint">更新時間：${safe(new Date(state.forgeDataUpdatedAt).toLocaleTimeString())}。每次開始與完成前都會重新讀取並驗證；不確定寫入結果時只重讀、不重送。</p>`;
+  applySectionToggle(panel);
   if ($("forge-start")) $("forge-start").onclick = () => setForgeEnabled(accountId, true);
   if ($("forge-stop")) $("forge-stop").onclick = () => setForgeEnabled(accountId, false);
   $("forge-toggle-all").onclick = () => {
@@ -846,6 +848,18 @@ function itemSelect(name, value, accountId) {
   const options = [`<option value="">未設定</option>`].concat(recoveryItems(accountId).map((item) => `<option value="${safe(item.id)}" ${String(value || "") === String(item.id) ? "selected" : ""}>${safe(itemLabel(item))}</option>`));
   return `<select data-item-setting="${safe(name)}">${options.join("")}</select>`;
 }
+const sectionCollapseKey = "autoy-section-collapsed";
+function getSectionCollapsed(id) { try { return JSON.parse(localStorage.getItem(sectionCollapseKey) || "{}")[id] === true; } catch { return false; } }
+function setSectionCollapsed(id, val) { try { const m = JSON.parse(localStorage.getItem(sectionCollapseKey) || "{}"); if (val) m[id] = true; else delete m[id]; localStorage.setItem(sectionCollapseKey, JSON.stringify(m)); } catch {} }
+function applySectionToggle(panel) {
+  const id = panel.id;
+  const btn = panel.querySelector(".section-toggle");
+  if (!btn || !id) return;
+  const collapsed = getSectionCollapsed(id);
+  panel.classList.toggle("section-collapsed", collapsed);
+  btn.textContent = collapsed ? "展開" : "收起";
+  btn.onclick = () => { const now = !panel.classList.contains("section-collapsed"); panel.classList.toggle("section-collapsed", now); setSectionCollapsed(id, now); btn.textContent = now ? "展開" : "收起"; };
+}
 function renderItemSettings(accountId = activeId) {
   const panel = $("item-settings");
   if (!panel) return;
@@ -857,10 +871,11 @@ function renderItemSettings(accountId = activeId) {
   const inventoryHint = hasItems ? `${recoveryItems(accountId).length} 種可用恢復補品；上次讀取 ${new Date(state.itemsUpdatedAt).toLocaleTimeString()}` : "尚未讀取背包";
   const team = settings.teamItems || {};
   const heroes = (state.heroes || []).filter((hero) => hero.selected === true);
-  panel.innerHTML = `<div class="item-settings-heading"><div><h3>補品設定</h3><p class="hint">${safe(inventoryHint)}。能力增益、裝備、礦物與材料不會出現在選單。</p></div></div>
+  panel.innerHTML = `<div class="item-settings-heading"><div><h3>補品設定</h3><p class="hint">${safe(inventoryHint)}。能力增益、裝備、礦物與材料不會出現在選單。</p></div><button type="button" class="section-toggle">收起</button></div>
     <label class="checkbox-setting item-enable"><input id="use-items" type="checkbox" ${settings.useItems === true ? "checked" : ""} /> 使用補品；未勾選時維持休息流程</label>
     <div class="item-grid"><div><strong>全隊預設</strong><label>HP 補品${itemSelect("team.hp", team.hp, accountId)}</label><label>SP 補品${itemSelect("team.sp", team.sp, accountId)}</label><label>雙恢復補品${itemSelect("team.both", team.both, accountId)}</label></div>
     <div class="item-hero-settings"><strong>出戰角色指定（未指定或用完時改用全隊預設）</strong>${heroes.length ? heroes.map((hero) => { const own = settings.heroItems?.[String(hero.id)] || {}; return `<div class="item-hero-row"><span>${safe(hero.name)}</span><label>HP${itemSelect(`hero.${hero.id}.hp`, own.hp, accountId)}</label><label>SP${itemSelect(`hero.${hero.id}.sp`, own.sp, accountId)}</label><label>雙恢復${itemSelect(`hero.${hero.id}.both`, own.both, accountId)}</label></div>`; }).join("") : "<p class=\"hint\">目前沒有勾選出戰角色。</p>"}</div></div>`;
+  applySectionToggle(panel);
   $("use-items").onchange = () => { persistSettings(); renderItemSettings(accountId); };
   panel.querySelectorAll("[data-item-setting]").forEach((select) => select.onchange = () => {
     const key = select.dataset.itemSetting.split(".");
@@ -1629,15 +1644,39 @@ async function checkAndSwapEquipments(c, accountId, huntResult) {
     }
   }
   state.equipments = state.equipments.filter((e) => !deletedIds.includes(e.id));
+  for (const hero of (state.heroes || []).filter((h) => h.selected === true)) {
+    const heroIdStr = String(hero.id);
+    const hs = (c.heroEquipSettings || {})[heroIdStr] || {};
+    if (!hs.weaponType || hs.noAutoSwap) continue;
+    const hasType = state.equipments.some((e) => String(e.equipped) === heroIdStr && e.type === hs.weaponType);
+    if (!hasType) {
+      if (!needsReplacement.has(heroIdStr)) needsReplacement.set(heroIdStr, new Set());
+      needsReplacement.get(heroIdStr).add(hs.weaponType);
+    }
+  }
   if (needsReplacement.size === 0) return;
   for (const [heroIdStr, types] of needsReplacement) {
     const heroId = Number(heroIdStr);
     const heroEquipSetting = (c.heroEquipSettings || {})[heroIdStr] || {};
+    if (heroEquipSetting.noAutoSwap === true) {
+      log(`英雄 ${heroIdStr} 設定不動切換，跳過換裝`, accountId);
+      continue;
+    }
+    const queue = Array.isArray(heroEquipSetting.queue) ? heroEquipSetting.queue : [];
     for (const type of types) {
-      const candidates = state.equipments.filter((e) => e.type === type && e.equipped == null && e.state === 0);
-      candidates.sort((a, b) => b.dur - a.dur);
-      const best = candidates[0];
-      if (!best) {
+      let chosen = null;
+      if (queue.length > 0) {
+        chosen = queue
+          .map((id) => state.equipments.find((e) => e.id === id))
+          .find((e) => e && e.type === type && e.state === 0 && e.equipped == null && e.color !== "red" && e.dur >= c.equipDurThreshold) || null;
+      } else {
+        const candidates = state.equipments.filter(
+          (e) => e.type === type && e.state === 0 && e.equipped == null && e.color !== "red" && e.dur >= c.equipDurThreshold
+        );
+        candidates.sort((a, b) => a.dur - b.dur);
+        chosen = candidates[0] || null;
+      }
+      if (!chosen) {
         if (heroEquipSetting.allowBareHands !== true) {
           log(`裝備（類型 ${type}）無替換品且不允許空手；停止自動狩獵`, accountId);
           stopRunner(accountId, `裝備（類型 ${type}）無替換品且不允許空手`);
@@ -1646,8 +1685,8 @@ async function checkAndSwapEquipments(c, accountId, huntResult) {
         log(`裝備（類型 ${type}）無替換品；允許空手繼續`, accountId);
         continue;
       }
-      log(`換裝：類型 ${type} 耐久不足，換上耐久 ${best.dur} 的替換品`, accountId);
-      const equipResult = await request(`/equipments/${encodeURIComponent(best.id)}/equip`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ heroId }) }, accountId);
+      log(`換裝：類型 ${type} 耐久不足，換上耐久 ${chosen.dur} 的替換品`, accountId);
+      const equipResult = await request(`/equipments/${encodeURIComponent(chosen.id)}/equip`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ heroId }) }, accountId);
       if (Array.isArray(equipResult)) state.equipments = equipResult;
       else if (Array.isArray(equipResult?.equipments)) state.equipments = equipResult.equipments;
     }
@@ -1659,21 +1698,104 @@ function renderEquipSettings(accountId = activeId) {
   const account = accounts.find((entry) => entry.id === accountId);
   if (!account || accountId !== activeId) return;
   const settings = { ...defaultSettings(), ...(account.settings || {}) };
-  const heroes = (runtimeFor(accountId).heroes || []).filter((hero) => hero.selected === true);
+  const state = runtimeFor(accountId);
+  const heroes = (state.heroes || []).filter((hero) => hero.selected === true);
+  const equipments = state.equipments || [];
   const enabled = settings.equipAutoSwap === true;
   const threshold = settings.equipDurThreshold ?? 100;
   const heroSettings = settings.heroEquipSettings || {};
-  panel.innerHTML = `<div class="item-settings-heading"><div><h3>裝備自動換裝</h3><p class="hint">狩獵後偵測耐久低於門檻或裝備損毀，自動換上同類型耐久最高的替換品。</p></div></div>
-    <label class="checkbox-setting item-enable"><input id="equip-auto-swap" type="checkbox" ${enabled ? "checked" : ""} /> 啟用裝備自動換裝</label>
-    <div class="settings" style="${enabled ? "" : "opacity:0.5;pointer-events:none"}"><label>換裝耐久門檻（低於此值立即換裝）<input id="equip-dur-threshold" type="number" min="0" value="${threshold}" /></label></div>
-    <div class="item-hero-settings"><strong>出戰角色空手設定</strong>${heroes.length ? heroes.map((hero) => { const hs = heroSettings[String(hero.id)] || {}; return `<div class="item-hero-row"><span>${safe(hero.name)}</span><label class="checkbox-setting"><input type="checkbox" data-equip-hero="${hero.id}" ${hs.allowBareHands === true ? "checked" : ""} /> 允許空手</label></div>`; }).join("") : `<p class="hint">目前沒有勾選出戰角色。</p>`}</div>`;
-  $("equip-auto-swap").onchange = () => { persistSettings(); renderEquipSettings(accountId); };
+  const allTypes = [...new Set(equipments.map((e) => e.type).filter(Boolean))].sort();
+
+  function heroCard(hero) {
+    const heroIdStr = String(hero.id);
+    const hs = heroSettings[heroIdStr] || {};
+    const noAutoSwap = hs.noAutoSwap === true;
+    const allowBareHands = hs.allowBareHands === true;
+    const weaponType = hs.weaponType || "";
+    const queue = Array.isArray(hs.queue) ? hs.queue : [];
+    const queueHtml = queue.length
+      ? queue.map((id, idx) => {
+          const item = equipments.find((e) => e.id === id);
+          if (!item) return `<div class="equip-queue-row"><span class="equip-q-num">${idx + 1}</span><span class="equip-q-name equip-item-missing">ID ${id}（已不存在）</span><button type="button" class="equip-q-remove" data-hero="${heroIdStr}" data-item-id="${id}">×</button></div>`;
+          return `<div class="equip-queue-row"><span class="equip-q-num">${idx + 1}</span><span class="equip-q-name">${safe(item.name)}</span><span class="equip-q-type">${safe(item.type)}</span><span class="equip-q-dur${item.dur < threshold ? " equip-dur-low" : ""}">${item.dur}/${item.fullDur}</span><button type="button" class="equip-q-remove" data-hero="${heroIdStr}" data-item-id="${id}">×</button></div>`;
+        }).join("")
+      : `<p class="hint" style="margin:4px 0">佇列為空，自動選耐久最低的替換品</p>`;
+    const available = equipments.filter((e) => e.state === 0 && e.equipped == null && !queue.includes(e.id) && (weaponType === "" || e.type === weaponType));
+    const typeMap = {};
+    for (const e of available) { if (!typeMap[e.type]) typeMap[e.type] = []; typeMap[e.type].push(e); }
+    for (const arr of Object.values(typeMap)) arr.sort((a, b) => a.dur - b.dur);
+    const availableHtml = Object.keys(typeMap).length
+      ? Object.entries(typeMap).map(([type, items]) =>
+          `<div class="equip-avail-group"><span class="equip-avail-type">${safe(type)}</span>${items.map((item) =>
+            `<button type="button" class="equip-avail-btn${item.color === "red" ? " equip-item-protected" : ""}" data-hero="${heroIdStr}" data-item-id="${item.id}"${item.color === "red" ? ' disabled title="保存用裝備，不可加入佇列"' : ""}>${safe(item.name)} <span class="equip-q-dur${item.dur < threshold ? " equip-dur-low" : ""}">${item.dur}/${item.fullDur}</span>${item.color === "red" ? " 🔒" : ""}</button>`
+          ).join("")}</div>`
+        ).join("")
+      : `<p class="hint" style="margin:4px 0">${weaponType ? `無可用的 ${safe(weaponType)}` : "無可用裝備"}</p>`;
+    const typeOptions = `<option value="">全部類型</option>` + allTypes.map((t) => `<option value="${safe(t)}"${weaponType === t ? " selected" : ""}>${safe(t)}</option>`).join("");
+    return `<div class="equip-hero-card">
+      <div class="equip-hero-header">
+        <strong class="equip-hero-name">${safe(hero.name)}</strong>
+        <label class="checkbox-setting"><input type="checkbox" data-equip-no-swap="${heroIdStr}"${noAutoSwap ? " checked" : ""}> 不動切換</label>
+        <label class="checkbox-setting"><input type="checkbox" data-equip-bare-hands="${heroIdStr}"${allowBareHands ? " checked" : ""}> 允許空手</label>
+        <label class="equip-type-select-label" title="設定後，換裝觸發時若英雄缺少此類型裝備，會主動補裝">武器種類<select data-equip-weapon-type="${heroIdStr}">${typeOptions}</select></label>
+      </div>
+      <div class="equip-hero-body${noAutoSwap ? " equip-section-disabled" : ""}">
+        <div class="equip-queue-col"><div class="equip-col-label">換裝佇列<span class="hint">（依序使用）</span></div><div class="equip-queue-rows">${queueHtml}</div></div>
+        <div class="equip-avail-col"><div class="equip-col-label">可加入佇列</div><p class="hint" style="margin:0 0 6px;font-size:.78rem">🔒 = 保存用裝備，禁止自動消耗，只能手動裝備</p><div class="equip-avail-scroll">${availableHtml}</div></div>
+      </div>
+    </div>`;
+  }
+
+  const heroSections = heroes.length ? heroes.map(heroCard).join("") : `<p class="hint">目前沒有勾選出戰角色。</p>`;
+  panel.innerHTML = `<div class="item-settings-heading"><div><h3>裝備自動換裝</h3><p class="hint">狩獵後偵測耐久低於門檻或裝備損毀，自動換上同類型替換品（跳過紅色保存裝備）。</p></div><button type="button" class="section-toggle">收起</button></div>
+    <label class="checkbox-setting item-enable"><input id="equip-auto-swap" type="checkbox" /> 啟用裝備自動換裝</label>
+    <div class="settings" id="equip-settings-body" style="${enabled ? "" : "opacity:0.5;pointer-events:none"}"><label>換裝耐久門檻（低於此值換裝；替換品耐久須高於此值）<input id="equip-dur-threshold" type="number" min="0" value="${threshold}" /></label></div>
+    <div class="item-hero-settings">${heroSections}</div>`;
+  applySectionToggle(panel);
+  $("equip-auto-swap").checked = enabled;
+  $("equip-auto-swap").onchange = () => {
+    persistSettings();
+    const body = $("equip-settings-body");
+    if (body) body.style.cssText = $("equip-auto-swap").checked ? "" : "opacity:0.5;pointer-events:none";
+  };
   $("equip-dur-threshold").onchange = () => persistSettings();
-  panel.querySelectorAll("[data-equip-hero]").forEach((cb) => cb.onchange = () => {
-    const heroId = String(cb.dataset.equipHero);
+
+  function updateHeroEquipSetting(heroId, patch) {
     account.settings = { ...defaultSettings(), ...(account.settings || {}) };
-    account.settings.heroEquipSettings = { ...(account.settings.heroEquipSettings || {}), [heroId]: { ...(account.settings.heroEquipSettings?.[heroId] || {}), allowBareHands: cb.checked } };
+    const prev = (account.settings.heroEquipSettings || {})[heroId] || {};
+    account.settings.heroEquipSettings = { ...(account.settings.heroEquipSettings || {}), [heroId]: { ...prev, ...patch } };
     save();
+  }
+
+  panel.querySelectorAll("[data-equip-no-swap]").forEach((cb) => {
+    cb.onchange = () => { updateHeroEquipSetting(cb.dataset.equipNoSwap, { noAutoSwap: cb.checked }); renderEquipSettings(accountId); };
+  });
+  panel.querySelectorAll("[data-equip-bare-hands]").forEach((cb) => {
+    cb.onchange = () => { updateHeroEquipSetting(cb.dataset.equipBareHands, { allowBareHands: cb.checked }); };
+  });
+  panel.querySelectorAll("[data-equip-weapon-type]").forEach((sel) => {
+    sel.onchange = () => { updateHeroEquipSetting(sel.dataset.equipWeaponType, { weaponType: sel.value }); renderEquipSettings(accountId); };
+  });
+  panel.querySelectorAll(".equip-avail-btn:not([disabled])").forEach((btn) => {
+    btn.onclick = () => {
+      const heroId = btn.dataset.hero;
+      const itemId = Number(btn.dataset.itemId);
+      const prev = (account.settings?.heroEquipSettings || {})[heroId] || {};
+      const q = Array.isArray(prev.queue) ? [...prev.queue] : [];
+      if (!q.includes(itemId)) q.push(itemId);
+      updateHeroEquipSetting(heroId, { queue: q });
+      renderEquipSettings(accountId);
+    };
+  });
+  panel.querySelectorAll(".equip-q-remove").forEach((btn) => {
+    btn.onclick = () => {
+      const heroId = btn.dataset.hero;
+      const itemId = Number(btn.dataset.itemId);
+      const prev = (account.settings?.heroEquipSettings || {})[heroId] || {};
+      const q = Array.isArray(prev.queue) ? prev.queue.filter((id) => id !== itemId) : [];
+      updateHeroEquipSetting(heroId, { queue: q });
+      renderEquipSettings(accountId);
+    };
   });
 }
 async function hunt(c, accountId) {
