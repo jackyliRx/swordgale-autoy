@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.31";
+const uiVersion = "0.8.32";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -1803,15 +1803,22 @@ async function checkAndSwapEquipments(c, accountId, huntResult) {
         chosen = candidates[0] || null;
       }
       if (!chosen) {
+        const sameType = state.equipments.filter((e) => anyType || e.type === type);
+        const reasons = [];
+        if (sameType.some((e) => e.equipped != null)) reasons.push(`${sameType.filter((e) => e.equipped != null).length} 件已穿著`);
+        if (sameType.some((e) => e.dur < c.equipDurThreshold)) reasons.push(`${sameType.filter((e) => e.dur < c.equipDurThreshold).length} 件耐久不足`);
+        if (sameType.some((e) => e.state !== 0)) reasons.push(`${sameType.filter((e) => e.state !== 0).length} 件狀態異常`);
+        if (sameType.some((e) => e.color === "red")) reasons.push(`${sameType.filter((e) => e.color === "red").length} 件紅色`);
+        const detail = reasons.length ? `（${reasons.join("、")}）` : "（背包無此類型）";
         if (heroEquipSetting.allowBareHands !== true) {
-          log(`裝備 ${typeLabel} 無替換品且不允許空手；停止自動狩獵`, accountId);
+          log(`裝備 ${typeLabel} 無替換品${detail}且不允許空手；停止自動狩獵`, accountId);
           stopRunner(accountId, `裝備 ${typeLabel} 無替換品且不允許空手`);
           return;
         }
-        log(`裝備 ${typeLabel} 無替換品；允許空手繼續`, accountId);
+        log(`裝備 ${typeLabel} 無替換品${detail}；允許空手繼續`, accountId);
         continue;
       }
-      log(`換裝：${typeLabel} 耐久不足，換上 ${safe(chosen.name)}（耐久 ${chosen.dur}）`, accountId);
+      log(`換裝：${typeLabel} 空手，換上 ${safe(chosen.name)}（耐久 ${chosen.dur}）`, accountId);
       const equipResult = await request(`/equipments/${encodeURIComponent(chosen.id)}/equip`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ heroId }) }, accountId);
       const newList = Array.isArray(equipResult) ? equipResult : (Array.isArray(equipResult?.equipments) ? equipResult.equipments : null);
       if (newList) state.equipments = newList;
