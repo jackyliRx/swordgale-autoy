@@ -7,6 +7,12 @@
 - 半自動登入切換器提供「登出並清除本站 Local Storage」：使用者確認後執行 `myteam.swordgale.online` origin 的 `localStorage.clear()` 並導向 `/login`；HTTP-only Cookie 與官方 CAPTCHA／OTP／裝置驗證不由外掛處理。
 - 同帳號只使用 `selected: true` 的 1 至 4 名出戰英雄。
 - 全部休息、完成休息、原地狩獵、狩獵前行、狩獵死亡結果、全部重生啟動與完成，以及回城／前往大草原兩方向移動流程的 Tampermonkey 實際錄製。
+- 多地圖狩獵支援：大草原（zone 1）、草原秘徑（fork zone 10002，大草原第 16 層進入，進入後 huntStage: 16，目標設 16 原地狩獵）、猛牛原（fork zone 10001，大草原第 11 層進入，進入後 huntStage: 11，目標設 11 原地狩獵）、黑暗山洞（zone 2）；各地圖進入、前行、原地狩獵、回程 API 均已錄製確認。
+- 通用地圖導航架構：`beginHuntMoveToZone`（主地圖移動，約 1 分鐘）、`beginHuntEnterForkPath`（秘境瞬間進入）、`beginHuntReturnToTown`（回程 `/move/0`，約 1 分鐘）、`continueHuntMove`（等待移動完成與接續出發）；切換地圖時自動偵測當前位置並補回程步驟。
+- 秘境地圖（草原秘徑、猛牛原）不支援退一層，只能回城；從秘境切換地圖自動走回城→出發流程。
+- 非圖形驗證（autoCaptchaVerify）：偵測到 CAPTCHA_REQUIRED 時，若已勾選則自動呼叫 `GET /captcha` 取得 `pendingCaptchaId` 並送出 `POST /captcha/verify { checked: true }`；驗證失敗或未勾選則停止自動狩獵與自動鍛造。
+- 目標地圖切換時，若隊伍目前在秘境或主副地圖，顯示確認對話框防止誤操作；切換後自動存檔設定。
+- 草原秘徑第 25 層超級綠水靈死透風險警告（目標設 ≥ 25 時顯示）；猛牛原目標設 < 11 時顯示入場樓層提示。
 - Tampermonkey API Recorder 可記錄 request 與 response，並遮罩 token、Authorization、Cookie 等敏感值。
 - API 錄製文件只保留有對應 Tampermonkey JSON 的實際錄製資料。
 - 自動狩獵已串接讀取出戰名單、檢查狀態與冷卻、移動／狩獵、等待休息、目標樓層控制及死亡復原等獨立操作。
@@ -158,7 +164,12 @@
 - 地點清單使用遊戲提供的地圖 ID、名稱、種類與可狩獵資訊；城鎮等特殊地點使用已確認的位置資料補入。
 - 路線獨立記錄為 `fromZoneId + toZoneId -> moveActionId`，不把 `/move/{n}` 的操作參數當成地圖 ID。
 - 每條路線標記尚未錄製、啟動已確認、完成已確認；完成座標需由 `/move/complete` 與 `/huntInfo` 核對，通過後才允許自動導航。
-- 已確認初始之鎮到大草原使用 `/move/1`，大草原回初始之鎮使用 `/move/0`；兩個方向的移動完成座標均已錄製。
+- 已確認並實作的地圖路線：
+  - 初始之鎮 ↔ 大草原：`/move/1` / `/move/0` + `/move/complete`（約 1 分鐘）
+  - 初始之鎮 ↔ 黑暗山洞：`/move/2` / `/move/0` + `/move/complete`（約 1 分鐘）
+  - 大草原第 16 層 → 草原秘徑：`/moveForkPath/10002`（瞬間）；回程：`/move/0` → `/move/complete` → `/move/{n}`
+  - 大草原第 11 層 → 猛牛原：`/moveForkPath/10001`（瞬間）；回程：`/move/0` → `/move/complete` → `/move/{n}`
+  - 秘境地圖無退一層，`canBack: false` 為秘境內移動限制，不影響回程城鎮指令
 - [ ] 實作地圖管理介面：顯示地點、目前位置、可用路線和驗證狀態，並可設定帳號狩獵目的地與樓層。新地圖先列為未驗證，補齊啟動和完成錄製後才允許自動導航。
 
 ## 自動狩獵流程

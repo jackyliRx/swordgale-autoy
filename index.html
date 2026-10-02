@@ -8,7 +8,7 @@
   </head>
   <body>
     <main class="app-shell">
-      <header><h1>Autoy</h1><p>多角色自動狩獵</p><span class="badge app-version">v0.8.10</span></header>
+      <header><h1>Autoy</h1><p>多角色自動狩獵</p><span class="badge app-version">v0.8.14</span></header>
       <div class="workspace">
         <aside class="card sidebar" id="hero-panel">
           <div class="heading"><h2>角色</h2><span id="party-summary" class="badge">尚未讀取</span></div>
@@ -27,6 +27,7 @@
         <section class="automation-settings" aria-label="自動狩獵設定">
           <h3>自動狩獵設定</h3>
           <div class="settings">
+            <label>目標地圖<select id="hunt-zone-select"><option value="grassland">大草原</option><option value="secret-path">草原秘徑</option><option value="bull-plains">猛牛原</option><option value="dark-cave">黑暗山洞</option></select></label>
             <label>目標樓層<input id="target-stage" type="number" min="1" value="1" /></label>
             <label>HP 補給觸發 %<input id="hp-target" type="number" min="1" max="100" value="80" /></label>
             <label>體力 SP 補給觸發 %<input id="sp-target" type="number" min="1" max="100" value="70" /></label>
@@ -38,7 +39,11 @@
         </section>
         <section class="item-settings" id="item-settings" aria-label="補品設定"></section>
         <section class="item-settings" id="forge-settings" aria-label="自動鍛造設定"></section>
+        <label class="checkbox-setting"><input id="auto-captcha-verify" type="checkbox" /> 非圖形驗證（偵測到活人驗證時自動勾選送出）</label>
         <div class="actions utility-actions"><button id="open-reports">戰報</button><button id="open-flow">流程訊息</button><button id="open-operations">操作紀錄</button><button id="open-item-recovery-incidents">補品異常</button><button id="open-forge-debug">鍛造除錯</button></div>
+        <p id="hunt-zone-warning" class="hint" style="color:#e87878;" hidden>草原秘徑從第 16 層進入，目標樓層需設 16 以上。</p>
+        <p id="hunt-zone-stage25-warning" class="hint" style="color:#e87878;" hidden>⚠ 草原秘徑第 25 層有超級綠水靈，強度極高，有全滅死透風險，請確認隊伍強度。</p>
+        <p id="hunt-zone-bull-plains-warning" class="hint" style="color:#e8c078;" hidden>猛牛原從大草原第 11 層進入，目標樓層需設 11 以上。</p>
         <p class="hint">停止後不會背景重新讀取；按「重新讀取」會更新角色、狩獵狀態與補品背包。</p>
         <p id="alert" class="alert" hidden></p>
         <div id="death-actions"></div>
@@ -52,6 +57,6 @@
     <dialog id="forge-debug-dialog"><div class="dialog-heading"><h2>鍛造除錯</h2><div class="actions"><label class="checkbox-setting"><input id="forge-debug-enabled" type="checkbox" /> 啟用鍛造除錯紀錄</label><button id="copy-forge-debug">複製 JSON</button><button id="clear-forge-debug">清除</button><button data-close-dialog>關閉</button></div></div><p class="hint">預設關閉。只在勾選後記錄鍛造資料讀取、驗證、開始、完成與錯誤摘要；不保存 token、Cookie、角色名稱、裝備名稱、完整 request／response。</p><pre id="forge-debug-log-list"></pre></dialog>
 
     <dialog id="reports-dialog"><div class="dialog-heading"><h2>狩獵戰報</h2><div class="actions"><button id="refresh-reports">讀取戰報</button><button data-close-dialog>關閉</button></div></div><p class="hint">只在按下「讀取戰報」時請求列表；點選戰報後才讀取單筆詳情並在遊戲端標記已閱。</p><div class="report-layout"><div id="report-list" class="report-list">尚未讀取戰報。</div><article id="report-detail" class="report-detail">請從左側選擇一筆戰報。</article></div></dialog>
-    <script src="./app.js?v=0.8.8"></script>
+    <script src="./app.js?v=0.8.14"></script>
   </body>
 </html>
