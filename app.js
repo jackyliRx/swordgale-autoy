@@ -1649,6 +1649,7 @@ async function checkAndSwapEquipments(c, accountId, huntResult) {
       log(`換裝：類型 ${type} 耐久不足，換上耐久 ${best.dur} 的替換品`, accountId);
       const equipResult = await request(`/equipments/${encodeURIComponent(best.id)}/equip`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ heroId }) }, accountId);
       if (Array.isArray(equipResult)) state.equipments = equipResult;
+      else if (Array.isArray(equipResult?.equipments)) state.equipments = equipResult.equipments;
     }
   }
 }
