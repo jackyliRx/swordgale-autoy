@@ -2035,6 +2035,7 @@ async function turn(accountId) {
         const challengeId = captchaInfo.pendingCaptchaId;
         log(`驗證類型：${captchaInfo.type || "未知"}`, accountId);
         if (captchaInfo.type === "hcaptcha" && challengeId != null) {
+          log(`圖形驗證自動解題：${config(accountId).autoHcaptchaSolve ? "已啟用" : "未啟用"}`, accountId);
           if (config(accountId).autoHcaptchaSolve) {
             const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
             if (solved === true) { log("hCaptcha 驗證通過，繼續自動狩獵", accountId); schedule(2000 + Math.floor(Math.random() * 6001), accountId); return; }
