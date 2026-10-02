@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.32";
+const uiVersion = "0.8.33";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -1790,17 +1790,28 @@ async function checkAndSwapEquipments(c, accountId, huntResult) {
     for (const type of types) {
       const anyType = type === null;
       const typeLabel = anyType ? "（不限類型）" : type;
-      let chosen = null;
-      if (queue.length > 0) {
-        chosen = queue
-          .map((id) => state.equipments.find((e) => e.id === id))
-          .find((e) => e && (anyType || e.type === type) && e.state === 0 && e.equipped == null && e.color !== "red" && e.dur >= c.equipDurThreshold) || null;
-      } else {
-        const candidates = state.equipments.filter(
-          (e) => (anyType || e.type === type) && e.state === 0 && e.equipped == null && e.color !== "red" && e.dur >= c.equipDurThreshold
-        );
-        candidates.sort((a, b) => a.dur - b.dur);
-        chosen = candidates[0] || null;
+      function pickFromList(list) {
+        let picked = null;
+        if (queue.length > 0) {
+          picked = queue
+            .map((id) => list.find((e) => e.id === id))
+            .find((e) => e && (anyType || e.type === type) && e.state === 0 && e.equipped == null && e.color !== "red" && e.dur >= c.equipDurThreshold) || null;
+        }
+        if (!picked) {
+          const candidates = list.filter((e) => (anyType || e.type === type) && e.state === 0 && e.equipped == null && e.color !== "red" && e.dur >= c.equipDurThreshold);
+          candidates.sort((a, b) => a.dur - b.dur);
+          picked = candidates[0] || null;
+        }
+        return picked;
+      }
+      let chosen = pickFromList(state.equipments);
+      if (!chosen) {
+        try {
+          log(`換裝：${typeLabel} 找不到替換品，重新讀取裝備清單...`, accountId);
+          const freshData = await request("/equipments", {}, accountId);
+          const freshList = Array.isArray(freshData) ? freshData : (Array.isArray(freshData?.equipments) ? freshData.equipments : null);
+          if (freshList && freshList.length > 0) { state.equipments = freshList; chosen = pickFromList(freshList); }
+        } catch {}
       }
       if (!chosen) {
         const sameType = state.equipments.filter((e) => anyType || e.type === type);
