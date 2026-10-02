@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.33";
+const uiVersion = "0.8.34";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -489,6 +489,10 @@ function renderForgeSettings(accountId = activeId) {
   const groupedMineOptions = MINE_ORDER.filter((cat) => mineGroups[cat]).map((cat) => `<optgroup label="${cat}">${mineGroups[cat].map((mine) => `<option value="${safe(mine.id)}">${safe(mine.name)}（${Number(mine.available)}）</option>`).join("")}</optgroup>`).join("");
   const workshopCards = workshops.map((w) => {
     const draft = forgeDraftForWorkshop(accountId, w);
+    let draftChanged = false;
+    if (!draft.heroId && eligibleHeroes.length === 1) { draft.heroId = String(eligibleHeroes[0].id); draftChanged = true; }
+    if (!draft.type && state.forgeTypes.length > 0) { draft.type = state.forgeTypes[0].id; draftChanged = true; }
+    if (draftChanged) saveForgeDraft(accountId, draft);
     const workshopError = forgeWorkshopErrors.get(`${accountId}:${w}`);
     const active = activeForges.get(w);
     const forgingHeroOption = active && !eligibleHeroes.some((h) => String(h.id) === String(active.id)) ? `<option value="${safe(active.id)}" ${String(draft.heroId) === String(active.id) ? "selected" : ""}>${safe(active.name)}（鍛造中）</option>` : "";
