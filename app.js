@@ -7,6 +7,8 @@ const itemRecoveryTimelineLimit = 30;
 const forgeDebugLogKey = "autoy.forgeDebugLogs.v1";
 const forgeDebugLogLimit = 200;
 const ocilarApiKeyStore = "autoy.ocilarApiKey.v1";
+const ocilarUsageStore = "autoy.ocilarUsage.v1";
+const ocilarMonthlyLimit = 1000;
 const hcaptchaSitekey = "181ea3ce-653a-436a-8410-1e9259e6d0bc";
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let itemRecoveryIncidents = loadItemRecoveryIncidents();
@@ -24,7 +26,7 @@ const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
   if (!runtimes.has(id)) {
     const account = accounts.find((entry) => entry.id === id);
-    runtimes.set(id, { heroes: [], equipments: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemsPayload: null, itemsRefreshPromise: null, forgeProfile: null, forgeTypes: [], forgeMines: [], forgeDraft: { workshop: 1, enabled: false, heroId: "", name: "", type: "", selectedMines: [], recoveryItemId: "" }, forgeDataUpdatedAt: 0, forgeRunning: false, forgeTimer: null, forgeWakeAt: 0, forgeBusy: false, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, stopReason: null, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, huntPaths: [], nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, writeQueue: Promise.resolve(), actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
+    runtimes.set(id, { heroes: [], equipments: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemsPayload: null, itemsRefreshPromise: null, forgeProfile: null, forgeTypes: [], forgeMines: [], forgeDraft: { workshop: 1, enabled: false, heroId: "", name: "", type: "", selectedMines: [], recoveryItemId: "" }, forgeDataUpdatedAt: 0, forgeRunning: false, forgeTimer: null, forgeWakeAt: 0, forgeBusy: false, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, stopReason: null, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, huntPaths: [], nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, writeQueue: Promise.resolve(), actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null, captchaSolveCount: 0, captchaThreshold: randomCaptchaThreshold() });
   }
   return runtimes.get(id);
 }
@@ -660,9 +662,17 @@ async function useForgeRecoveryItem(accountId, workshop, hero) {
     await refreshForgeAfterUncertainWrite(accountId, "forge.recovery.write", error);
   }
 }
+function randomCaptchaThreshold() { return 5 + Math.floor(Math.random() * 11); }
+function getOcilarUsage() { try { return JSON.parse(localStorage.getItem(ocilarUsageStore) || "{}"); } catch { return {}; } }
+function saveOcilarUsage(u) { try { localStorage.setItem(ocilarUsageStore, JSON.stringify(u)); } catch {} }
+function ocilarUsageKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
+function incrementOcilarUsage() { const u = getOcilarUsage(); const k = ocilarUsageKey(); u[k] = (u[k] || 0) + 1; saveOcilarUsage(u); renderOcilarUsage(); return u[k]; }
+function renderOcilarUsage() { const el = document.getElementById("ocilar-usage"); if (!el) return; const u = getOcilarUsage(); const used = u[ocilarUsageKey()] || 0; el.textContent = `本月已用 ${used} / ${ocilarMonthlyLimit} 次`; el.style.color = used >= ocilarMonthlyLimit ? "#e87878" : used >= ocilarMonthlyLimit * 0.8 ? "#e8c078" : "#9dccff"; }
 async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
   const apiKey = (localStorage.getItem(ocilarApiKeyStore) || "").trim();
   if (!apiKey) { log("未設定 Ocilar API Key，無法自動解題", accountId); return false; }
+  const usedThisMonth = (getOcilarUsage()[ocilarUsageKey()] || 0);
+  if (usedThisMonth >= ocilarMonthlyLimit) { log(`Ocilar 本月已達 ${ocilarMonthlyLimit} 次上限，請更換新的 API Key 並重設額度`, accountId); return false; }
   log("偵測到 hCaptcha，呼叫 Ocilar 自動解題...", accountId);
   try { await request("/captcha/display", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId }) }, accountId); } catch {}
   try {
@@ -675,11 +685,32 @@ async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
     const result = await resp.json();
     if (!result.token) { log(`Ocilar 解題失敗：${result.message || JSON.stringify(result)}`, accountId); return false; }
     log(`Ocilar 解題成功（${result.latency_ms ?? "?"}ms，消耗 ${result.credits_used ?? "?"} 點）`, accountId);
-    const waitMs = 3000 + Math.floor(Math.random() * 5000);
+    const waitMs = 10000 + Math.floor(Math.random() * 20001);
     log(`等待 ${(waitMs / 1000).toFixed(1)}s 後提交驗證...`, accountId);
     await new Promise((r) => setTimeout(r, waitMs));
     const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, token: result.token }) }, accountId);
-    return verifyResult?.ok === true;
+    if (verifyResult?.ok !== true) return false;
+    const monthTotal = incrementOcilarUsage();
+    const state = runtimeFor(accountId);
+    state.captchaSolveCount = (state.captchaSolveCount || 0) + 1;
+    log(`hCaptcha 已解題 ${state.captchaSolveCount}/${state.captchaThreshold} 次（本月累計 ${monthTotal}/${ocilarMonthlyLimit}）`, accountId);
+    if (state.captchaSolveCount >= state.captchaThreshold) {
+      const pauseMs = (10 + Math.floor(Math.random() * 21)) * 60000;
+      const pauseMin = Math.round(pauseMs / 60000);
+      const wasForgeRunning = state.forgeRunning;
+      stopRunner(accountId, `hCaptcha 解題次數達上限，暫停 ${pauseMin} 分鐘`);
+      stopForgeRunner(accountId, `hCaptcha 解題次數達上限`);
+      log(`hCaptcha 驗證次數達上限（${state.captchaThreshold} 次），暫停 ${pauseMin} 分鐘後自動重啟`, accountId);
+      state.captchaSolveCount = 0;
+      state.captchaThreshold = randomCaptchaThreshold();
+      setTimeout(() => {
+        log(`暫停結束，重啟自動狩獵${wasForgeRunning ? "與自動鍛造" : ""}`, accountId);
+        startRunner(accountId);
+        if (wasForgeRunning) setForgeEnabled(accountId, true);
+      }, pauseMs);
+      return "paused";
+    }
+    return true;
   } catch (err) {
     log(`Ocilar 呼叫失敗：${err.message || String(err)}`, accountId);
     return false;
@@ -768,7 +799,8 @@ async function forgeTurn(accountId) {
         if (captchaInfo.type === "hcaptcha" && challengeId != null) {
           if (config(accountId).autoHcaptchaSolve) {
             const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
-            if (solved) { log("hCaptcha 驗證通過，繼續自動鍛造", accountId); forgeSchedule(2000, accountId); return; }
+            if (solved === true) { log("hCaptcha 驗證通過，繼續自動鍛造", accountId); forgeSchedule(2000, accountId); return; }
+            if (solved === "paused") return;
             log("hCaptcha 驗證未通過，停止自動鍛造", accountId);
           } else {
             log("偵測到圖形驗證，已停止自動鍛造", accountId);
@@ -1976,7 +2008,8 @@ async function turn(accountId) {
         if (captchaInfo.type === "hcaptcha" && challengeId != null) {
           if (config(accountId).autoHcaptchaSolve) {
             const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
-            if (solved) { log("hCaptcha 驗證通過，繼續自動狩獵", accountId); schedule(2000, accountId); return; }
+            if (solved === true) { log("hCaptcha 驗證通過，繼續自動狩獵", accountId); schedule(2000, accountId); return; }
+            if (solved === "paused") return;
             log("hCaptcha 驗證未通過，停止自動狩獵與自動鍛造", accountId);
           } else {
             log("偵測到圖形驗證，已停止自動狩獵與自動鍛造", accountId);
@@ -2005,7 +2038,7 @@ function startRunner(accountId) {
   if (state.running || state.actionBusy) return;
   const c = config(accountId);
   if (!validConfig(c)) { warn("請先設定有效的狩獵目標與 HP／SP 門檻", accountId); return; }
-  state.running = true; state.stopReason = null; state.restUntil = 0; state.recoveryFallbackHeroes.clear();
+  state.running = true; state.stopReason = null; state.restUntil = 0; state.recoveryFallbackHeroes.clear(); state.captchaSolveCount = 0; state.captchaThreshold = randomCaptchaThreshold();
   operation(accountId, "runner.started", { version: uiVersion, targetStage: c.target, hpTarget: c.hp, spTarget: c.sp });
   debug(accountId, "runner.started", { config: c });
   if (accountId === activeId) { $("alert").hidden = true; document.title = "Autoy"; setState(null, accountId); }
@@ -2119,6 +2152,8 @@ function initAccountEvents() {
   });
   const ocilarInput = $("ocilar-api-key");
   if (ocilarInput) ocilarInput.addEventListener("change", () => { localStorage.setItem(ocilarApiKeyStore, ocilarInput.value.trim()); });
+  const ocilarResetBtn = $("ocilar-reset-usage");
+  if (ocilarResetBtn) ocilarResetBtn.addEventListener("click", () => { const u = getOcilarUsage(); delete u[ocilarUsageKey()]; saveOcilarUsage(u); renderOcilarUsage(); log("Ocilar 本月額度已重設"); });
   for (const id of ["target-stage", "hp-target", "sp-target", "rest-hp-target", "rest-sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console", "item-recovery-incident-enabled", "forge-debug-enabled", "auto-captcha-verify", "auto-hcaptcha-solve"]) $(id).addEventListener("change", () => {
     persistSettings();
     if (id === "target-stage") updateHuntZoneWarning();
@@ -2132,6 +2167,7 @@ function init() {
   initAccountEvents();
   const ocilarInput = $("ocilar-api-key");
   if (ocilarInput) ocilarInput.value = localStorage.getItem(ocilarApiKeyStore) || "";
+  renderOcilarUsage();
   if (active()) loadSettings();
   render();
   if (active()) loadAccountSnapshot(activeId);

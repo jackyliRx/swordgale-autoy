@@ -42,7 +42,7 @@
         <section class="item-settings" id="equip-settings" aria-label="裝備自動換裝設定"></section>
         <label class="checkbox-setting"><input id="auto-captcha-verify" type="checkbox" /> 非圖形驗證（偵測到活人驗證時自動勾選送出）</label>
         <label class="checkbox-setting"><input id="auto-hcaptcha-solve" type="checkbox" /> 圖形驗證自動解題（hCaptcha，需設定 Ocilar API Key）</label>
-        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:.86rem;white-space:nowrap">Ocilar API Key</span><input id="ocilar-api-key" type="password" placeholder="sk-..." autocomplete="off" style="flex:1;min-width:180px;max-width:320px" /></div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:.86rem;white-space:nowrap">Ocilar API Key</span><input id="ocilar-api-key" type="password" placeholder="sk-..." autocomplete="off" style="flex:1;min-width:180px;max-width:320px" /><span id="ocilar-usage" style="font-size:.8rem;white-space:nowrap"></span><button id="ocilar-reset-usage" type="button" style="font-size:.8rem;padding:4px 8px">重設額度</button></div>
         <div class="actions utility-actions"><button id="open-reports">戰報</button><button id="open-flow">流程訊息</button><button id="open-operations">操作紀錄</button><button id="open-item-recovery-incidents">補品異常</button><button id="open-forge-debug">鍛造除錯</button></div>
         <p id="hunt-zone-warning" class="hint" style="color:#e87878;" hidden>草原秘徑從第 16 層進入，目標樓層需設 16 以上。</p>
         <p id="hunt-zone-stage25-warning" class="hint" style="color:#e87878;" hidden>⚠ 草原秘徑第 25 層有超級綠水靈，強度極高，有全滅死透風險，請確認隊伍強度。</p>
