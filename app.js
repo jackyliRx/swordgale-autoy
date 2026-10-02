@@ -794,12 +794,13 @@ async function forgeTurn(accountId) {
     recordForgeDebug(accountId, "forge.turn.error", { error: String(error?.message || error).slice(0, 160) });
     if (error.name !== "AbortError" && error.statusCode === 403 && error.responseBody?.code === "CAPTCHA_REQUIRED") {
       try {
+        await new Promise((r) => setTimeout(r, 3000 + Math.floor(Math.random() * 5001)));
         const captchaInfo = await request("/captcha", {}, accountId);
         const challengeId = captchaInfo.pendingCaptchaId;
         if (captchaInfo.type === "hcaptcha" && challengeId != null) {
           if (config(accountId).autoHcaptchaSolve) {
             const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
-            if (solved === true) { log("hCaptcha 驗證通過，繼續自動鍛造", accountId); forgeSchedule(2000, accountId); return; }
+            if (solved === true) { log("hCaptcha 驗證通過，繼續自動鍛造", accountId); forgeSchedule(2000 + Math.floor(Math.random() * 6001), accountId); return; }
             if (solved === "paused") return;
             log("hCaptcha 驗證未通過，停止自動鍛造", accountId);
           } else {
@@ -2003,12 +2004,13 @@ async function turn(accountId) {
   } catch (error) {
     if (error.name !== "AbortError" && error.statusCode === 403 && error.responseBody?.code === "CAPTCHA_REQUIRED") {
       try {
+        await new Promise((r) => setTimeout(r, 3000 + Math.floor(Math.random() * 5001)));
         const captchaInfo = await request("/captcha", {}, accountId);
         const challengeId = captchaInfo.pendingCaptchaId;
         if (captchaInfo.type === "hcaptcha" && challengeId != null) {
           if (config(accountId).autoHcaptchaSolve) {
             const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
-            if (solved === true) { log("hCaptcha 驗證通過，繼續自動狩獵", accountId); schedule(2000, accountId); return; }
+            if (solved === true) { log("hCaptcha 驗證通過，繼續自動狩獵", accountId); schedule(2000 + Math.floor(Math.random() * 6001), accountId); return; }
             if (solved === "paused") return;
             log("hCaptcha 驗證未通過，停止自動狩獵與自動鍛造", accountId);
           } else {
