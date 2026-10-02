@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.29";
+const uiVersion = "0.8.30";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -1744,7 +1744,6 @@ async function checkAndSwapEquipments(c, accountId, huntResult) {
   if (!Array.isArray(state.equipments) || state.equipments.length === 0) return;
   const updated = huntResult?.equipmentChanges?.updated || [];
   const deletedIds = huntResult?.equipmentChanges?.deletedIds || [];
-  if (!updated.length && !deletedIds.length) return;
   const needsReplacement = new Map();
   for (const id of deletedIds) {
     const item = state.equipments.find((e) => e.id === id);
