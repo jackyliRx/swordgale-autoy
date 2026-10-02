@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.14";
+const uiVersion = "0.8.15";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -22,7 +22,7 @@ const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
   if (!runtimes.has(id)) {
     const account = accounts.find((entry) => entry.id === id);
-    runtimes.set(id, { heroes: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemsPayload: null, itemsRefreshPromise: null, forgeProfile: null, forgeTypes: [], forgeMines: [], forgeDraft: { workshop: 1, enabled: false, heroId: "", name: "", type: "", selectedMines: [], recoveryItemId: "" }, forgeDataUpdatedAt: 0, forgeRunning: false, forgeTimer: null, forgeWakeAt: 0, forgeBusy: false, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, stopReason: null, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, huntPaths: [], nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, writeQueue: Promise.resolve(), actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
+    runtimes.set(id, { heroes: [], equipments: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemsPayload: null, itemsRefreshPromise: null, forgeProfile: null, forgeTypes: [], forgeMines: [], forgeDraft: { workshop: 1, enabled: false, heroId: "", name: "", type: "", selectedMines: [], recoveryItemId: "" }, forgeDataUpdatedAt: 0, forgeRunning: false, forgeTimer: null, forgeWakeAt: 0, forgeBusy: false, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, stopReason: null, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, huntPaths: [], nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, writeQueue: Promise.resolve(), actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null });
   }
   return runtimes.get(id);
 }
@@ -162,11 +162,11 @@ function partyDebug(party) {
 }
 function config(accountId = activeId) {
   const account = accounts.find((a) => a.id === accountId);
-  if (account?.settings) { const settings = { ...defaultSettings(), ...account.settings }; return { target: Number(settings.target), huntZone: settings.huntZone || "grassland", hp: Number(settings.hp), sp: Number(settings.sp), restHp: Number(settings.restHp), restSp: Number(settings.restSp), useItems: settings.useItems === true, teamItems: settings.teamItems || {}, heroItems: settings.heroItems || {}, restMinutes: Number(settings.restMinutes), alertMinutes: Number(settings.alertMinutes), flowMessages: settings.flowMessages !== false, operationLog: settings.operationLog === true, debug: settings.debug === true, itemRecoveryIncidentEnabled: settings.itemRecoveryIncidentEnabled === true, forgeDebugEnabled: settings.forgeDebugEnabled === true, autoCaptchaVerify: settings.autoCaptchaVerify === true }; }
+  if (account?.settings) { const settings = { ...defaultSettings(), ...account.settings }; return { target: Number(settings.target), huntZone: settings.huntZone || "grassland", hp: Number(settings.hp), sp: Number(settings.sp), restHp: Number(settings.restHp), restSp: Number(settings.restSp), useItems: settings.useItems === true, teamItems: settings.teamItems || {}, heroItems: settings.heroItems || {}, restMinutes: Number(settings.restMinutes), alertMinutes: Number(settings.alertMinutes), flowMessages: settings.flowMessages !== false, operationLog: settings.operationLog === true, debug: settings.debug === true, itemRecoveryIncidentEnabled: settings.itemRecoveryIncidentEnabled === true, forgeDebugEnabled: settings.forgeDebugEnabled === true, autoCaptchaVerify: settings.autoCaptchaVerify === true, equipAutoSwap: settings.equipAutoSwap === true, equipDurThreshold: Number(settings.equipDurThreshold) || 100, heroEquipSettings: settings.heroEquipSettings || {} }; }
   return { target: Number($("target-stage").value), huntZone: $("hunt-zone-select")?.value || "grassland", hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, teamItems: {}, heroItems: {}, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked, autoCaptchaVerify: $("auto-captcha-verify").checked };
 }
 function validConfig(c) { return Number.isInteger(c.target) && c.target > 0 && c.hp >= 1 && c.hp <= 100 && c.sp >= 1 && c.sp <= 100 && c.restHp >= c.hp && c.restHp <= 100 && c.restSp >= c.sp && c.restSp <= 100 && c.restMinutes > 0 && c.alertMinutes >= 1 && (c.huntZone !== "secret-path" || c.target >= 16) && (c.huntZone !== "bull-plains" || c.target >= 11); }
-function defaultSettings() { return { target: 1, huntZone: "grassland", hp: 80, sp: 70, restHp: 90, restSp: 90, useItems: false, teamItems: {}, heroItems: {}, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false, itemRecoveryIncidentEnabled: false, forgeDebugEnabled: false, forgeEnabled: false, forgeWorkshops: {}, autoCaptchaVerify: false }; }
+function defaultSettings() { return { target: 1, huntZone: "grassland", hp: 80, sp: 70, restHp: 90, restSp: 90, useItems: false, teamItems: {}, heroItems: {}, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false, itemRecoveryIncidentEnabled: false, forgeDebugEnabled: false, forgeEnabled: false, forgeWorkshops: {}, autoCaptchaVerify: false, equipAutoSwap: false, equipDurThreshold: 100, heroEquipSettings: {} }; }
 function loadSettings(account = active()) {
   if (!account) return;
   account.settings = { ...defaultSettings(), ...(account.settings || {}) };
@@ -185,6 +185,7 @@ function loadSettings(account = active()) {
   $("forge-debug-enabled").checked = account.settings.forgeDebugEnabled === true;
   $("auto-captcha-verify").checked = account.settings.autoCaptchaVerify === true;
   renderItemSettings(account.id);
+  renderEquipSettings(account.id);
 }
 function persistSettings() {
   const account = active();
@@ -194,7 +195,7 @@ function persistSettings() {
 }
 function configFromForm() {
   const previous = active()?.settings || defaultSettings();
-  return { ...previous, huntZone: $("hunt-zone-select")?.value || "grassland", target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked, autoCaptchaVerify: $("auto-captcha-verify").checked };
+  return { ...previous, huntZone: $("hunt-zone-select")?.value || "grassland", target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked, autoCaptchaVerify: $("auto-captcha-verify").checked, equipAutoSwap: $("equip-auto-swap")?.checked === true, equipDurThreshold: Number($("equip-dur-threshold")?.value) || 100 };
 }
 function clearRecoveryTimers(accountId) {
   const state = runtimeFor(accountId);
@@ -878,14 +879,17 @@ async function refreshAccount(accountId = activeId, { quiet = false } = {}) {
   state.refreshPromise = (async () => {
     const heroData = await request("/heroes", {}, accountId);
     const huntInfo = await request("/huntInfo", {}, accountId);
+    const equipData = await request("/equipments", {}, accountId);
     state.heroes = heroData.heroes || [];
     state.canForward = huntInfo.canForward ?? null;
     state.cooldownAt = localCooldownAt(huntInfo.huntAvailableAt, state);
     if (huntInfo.paths) state.huntPaths = huntInfo.paths;
+    state.equipments = Array.isArray(equipData) ? equipData : (equipData?.equipments || []);
     debug(accountId, "state.refreshed", { party: partyDebug(state.heroes.filter((hero) => hero.selected === true)), huntZone: huntInfo.huntZone, huntStage: huntInfo.huntStage, canForward: state.canForward, cooldownAt: huntInfo.huntAvailableAt || null });
     if (accountId === activeId) {
       renderHeroes(accountId);
       renderItemSettings(accountId);
+      renderEquipSettings(accountId);
       const count = state.heroes.filter((hero) => hero.selected === true).length;
       if (!quiet) log(`已載入帳號狀態：${state.heroes.length} 張角色卡，勾選出戰 ${count} 名；${huntInfo.zoneName || "位置未知"} ${huntInfo.huntStage ?? "?"} 層`, accountId);
     }
@@ -1599,6 +1603,78 @@ async function rest(c, accountId) {
   if (accountId === activeId) renderHeroes(accountId);
   log("已啟動勾選出戰隊伍休息", accountId); schedule(state.restUntil - Date.now(), accountId);
 }
+async function checkAndSwapEquipments(c, accountId, huntResult) {
+  if (!c.equipAutoSwap) return;
+  const state = runtimeFor(accountId);
+  if (!Array.isArray(state.equipments) || state.equipments.length === 0) return;
+  const updated = huntResult?.equipmentChanges?.updated || [];
+  const deletedIds = huntResult?.equipmentChanges?.deletedIds || [];
+  if (!updated.length && !deletedIds.length) return;
+  const needsReplacement = new Map();
+  for (const id of deletedIds) {
+    const item = state.equipments.find((e) => e.id === id);
+    if (!item || item.equipped == null) continue;
+    const key = String(item.equipped);
+    if (!needsReplacement.has(key)) needsReplacement.set(key, new Set());
+    needsReplacement.get(key).add(item.type);
+  }
+  for (const { id, dur } of updated) {
+    const item = state.equipments.find((e) => e.id === id);
+    if (!item) continue;
+    item.dur = dur;
+    if (item.equipped != null && dur < c.equipDurThreshold) {
+      const key = String(item.equipped);
+      if (!needsReplacement.has(key)) needsReplacement.set(key, new Set());
+      needsReplacement.get(key).add(item.type);
+    }
+  }
+  state.equipments = state.equipments.filter((e) => !deletedIds.includes(e.id));
+  if (needsReplacement.size === 0) return;
+  for (const [heroIdStr, types] of needsReplacement) {
+    const heroId = Number(heroIdStr);
+    const heroEquipSetting = (c.heroEquipSettings || {})[heroIdStr] || {};
+    for (const type of types) {
+      const candidates = state.equipments.filter((e) => e.type === type && e.equipped == null && e.state === 0);
+      candidates.sort((a, b) => b.dur - a.dur);
+      const best = candidates[0];
+      if (!best) {
+        if (heroEquipSetting.allowBareHands !== true) {
+          log(`裝備（類型 ${type}）無替換品且不允許空手；停止自動狩獵`, accountId);
+          stopRunner(accountId, `裝備（類型 ${type}）無替換品且不允許空手`);
+          return;
+        }
+        log(`裝備（類型 ${type}）無替換品；允許空手繼續`, accountId);
+        continue;
+      }
+      log(`換裝：類型 ${type} 耐久不足，換上耐久 ${best.dur} 的替換品`, accountId);
+      const equipResult = await request(`/equipments/${encodeURIComponent(best.id)}/equip`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ heroId }) }, accountId);
+      if (Array.isArray(equipResult)) state.equipments = equipResult;
+    }
+  }
+}
+function renderEquipSettings(accountId = activeId) {
+  const panel = $("equip-settings");
+  if (!panel) return;
+  const account = accounts.find((entry) => entry.id === accountId);
+  if (!account || accountId !== activeId) return;
+  const settings = { ...defaultSettings(), ...(account.settings || {}) };
+  const heroes = (runtimeFor(accountId).heroes || []).filter((hero) => hero.selected === true);
+  const enabled = settings.equipAutoSwap === true;
+  const threshold = settings.equipDurThreshold ?? 100;
+  const heroSettings = settings.heroEquipSettings || {};
+  panel.innerHTML = `<div class="item-settings-heading"><div><h3>裝備自動換裝</h3><p class="hint">狩獵後偵測耐久低於門檻或裝備損毀，自動換上同類型耐久最高的替換品。</p></div></div>
+    <label class="checkbox-setting item-enable"><input id="equip-auto-swap" type="checkbox" ${enabled ? "checked" : ""} /> 啟用裝備自動換裝</label>
+    <div class="settings" style="${enabled ? "" : "opacity:0.5;pointer-events:none"}"><label>換裝耐久門檻（低於此值立即換裝）<input id="equip-dur-threshold" type="number" min="0" value="${threshold}" /></label></div>
+    <div class="item-hero-settings"><strong>出戰角色空手設定</strong>${heroes.length ? heroes.map((hero) => { const hs = heroSettings[String(hero.id)] || {}; return `<div class="item-hero-row"><span>${safe(hero.name)}</span><label class="checkbox-setting"><input type="checkbox" data-equip-hero="${hero.id}" ${hs.allowBareHands === true ? "checked" : ""} /> 允許空手</label></div>`; }).join("") : `<p class="hint">目前沒有勾選出戰角色。</p>`}</div>`;
+  $("equip-auto-swap").onchange = () => { persistSettings(); renderEquipSettings(accountId); };
+  $("equip-dur-threshold").onchange = () => persistSettings();
+  panel.querySelectorAll("[data-equip-hero]").forEach((cb) => cb.onchange = () => {
+    const heroId = String(cb.dataset.equipHero);
+    account.settings = { ...defaultSettings(), ...(account.settings || {}) };
+    account.settings.heroEquipSettings = { ...(account.settings.heroEquipSettings || {}), [heroId]: { ...(account.settings.heroEquipSettings?.[heroId] || {}), allowBareHands: cb.checked } };
+    save();
+  });
+}
 async function hunt(c, accountId) {
   const state = runtimeFor(accountId);
   const party = selectedParty(accountId);
@@ -1633,6 +1709,7 @@ async function hunt(c, accountId) {
     if (info.paths) state.huntPaths = info.paths;
     if (accountId === activeId) renderHeroes(accountId);
     log("前行狩獵完成（前往草原秘徑途中）", accountId);
+    await checkAndSwapEquipments(c, accountId, result);
     schedule(Math.max(1000, state.cooldownAt - Date.now()), accountId);
     return;
   }
@@ -1651,6 +1728,7 @@ async function hunt(c, accountId) {
     if (info.paths) state.huntPaths = info.paths;
     if (accountId === activeId) renderHeroes(accountId);
     log("前行狩獵完成（前往猛牛原途中）", accountId);
+    await checkAndSwapEquipments(c, accountId, result);
     schedule(Math.max(1000, state.cooldownAt - Date.now()), accountId);
     return;
   }
@@ -1673,6 +1751,7 @@ async function hunt(c, accountId) {
   if (result.huntInfo?.paths) state.huntPaths = result.huntInfo.paths;
   if (accountId === activeId) renderHeroes(accountId);
   log(forward ? "前行狩獵完成" : "原地狩獵完成", accountId);
+  await checkAndSwapEquipments(c, accountId, result);
   schedule(Math.max(1000, state.cooldownAt - Date.now()), accountId);
 }
 function stopForInvalidParty(accountId) {

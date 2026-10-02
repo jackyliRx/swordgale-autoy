@@ -176,3 +176,45 @@
 
 `GET /api/heroes` 確認出戰名單 → `GET /api/huntInfo` 確認位置與冷卻 → 依地圖路線和目標樓層執行移動／狩獵 → 偵測出戰死亡後接續移動與復原 → 重新檢查隊伍狀態、HP／SP 及冷卻 → 恢復狩獵。各獨立操作已依已知 API 流程串接；上線後仍需在遊戲觀察整段循環與錯誤復原表現。
 
+## 裝備自動換裝
+
+### API
+- `GET /api/equipments` → 裝備完整清單；每筆 `{ id, name, type, quality, dur, fullDur, equipped (heroId|null), state (0=未裝備|1=已裝備) }`
+- `POST /api/equipments/{id}/equip` body `{ "heroId": N }` → 回傳更新後完整裝備清單（陣列）
+
+### 狀態管理
+- 手動讀取時呼叫 `GET /api/equipments` → 存入 `state.equipments`（陣列）
+- 每次狩獵後，更新 `state.equipments`：
+  - `equipmentChanges.updated[{id, dur}]` → 更新對應項目的 `dur`
+  - `equipmentChanges.deletedIds` → 從清單移除（裝備損毀）
+- 換裝後，以 POST 回傳的完整清單取代 `state.equipments`
+
+### 換裝觸發（每次狩獵後）
+1. `deletedIds` 非空 → 裝備損毀，立即尋找替換
+2. `equipmentChanges.updated` 中 `dur < equipDurThreshold` → 耐久低於門檻，立即尋找替換
+
+注意：必須在更新 `state.equipments` 之前，先從舊清單查出損毀裝備的 `equipped`（heroId），因為刪除後就無法追蹤歸屬。
+
+### 替換選擇邏輯
+- 篩選條件：`type === 損毀裝備.type && equipped === null && state === 0`
+- 選最高 `dur`
+- 無替換品 + 該角色 `allowBareHands === false` → 停止自動狩獵並記錄原因
+- 無替換品 + 該角色 `allowBareHands === true` → 繼續（允許空手）
+
+### 設定
+- `equipAutoSwap: false` — 全域開關（checkbox）
+- `equipDurThreshold: 100` — 固定耐久值門檻（數字輸入，低於此值觸發換裝）
+- `heroEquipSettings: {}` — 每角色設定，key 為 heroId 字串：`{ allowBareHands: boolean }`
+
+### 實作清單
+- [x] `runtimeFor()` 初始化 `state.equipments = []`
+- [x] `defaultSettings()` 新增 `equipAutoSwap`, `equipDurThreshold`, `heroEquipSettings`
+- [x] `config()` 兩個路徑均加入新設定
+- [x] `configFromForm()` 加入 `equipAutoSwap`, `equipDurThreshold`（`heroEquipSettings` 透過 `...previous` 保留）
+- [x] `loadSettings()` 最後呼叫 `renderEquipSettings(account.id)`
+- [x] `refreshAccount()` 新增 `GET /api/equipments` 呼叫 → `state.equipments`
+- [x] 新增 `checkAndSwapEquipments(c, accountId, huntResult)` 函式
+- [x] `hunt()` 各狩獵完成點呼叫 `await checkAndSwapEquipments(...)`
+- [x] 新增 `renderEquipSettings(accountId)` 渲染設定 UI（包含全域開關、門檻、每角色空手設定）
+- [x] `index.html` 新增 `<section id="equip-settings">` 於 forge-settings 之後
+
