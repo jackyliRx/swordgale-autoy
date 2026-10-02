@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.25";
+const uiVersion = "0.8.26";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -26,7 +26,7 @@ const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
   if (!runtimes.has(id)) {
     const account = accounts.find((entry) => entry.id === id);
-    runtimes.set(id, { heroes: [], equipments: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemsPayload: null, itemsRefreshPromise: null, forgeProfile: null, forgeTypes: [], forgeMines: [], forgeDraft: { workshop: 1, enabled: false, heroId: "", name: "", type: "", selectedMines: [], recoveryItemId: "" }, forgeDataUpdatedAt: 0, forgeRunning: false, forgeTimer: null, forgeWakeAt: 0, forgeBusy: false, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, stopReason: null, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, huntPaths: [], nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, writeQueue: Promise.resolve(), actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null, captchaSolveCount: 0, captchaThreshold: randomCaptchaThreshold() });
+    runtimes.set(id, { heroes: [], equipments: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemsPayload: null, itemsRefreshPromise: null, forgeProfile: null, forgeTypes: [], forgeMines: [], forgeDraft: { workshop: 1, enabled: false, heroId: "", name: "", type: "", selectedMines: [], recoveryItemId: "" }, forgeDataUpdatedAt: 0, forgeRunning: false, forgeTimer: null, forgeWakeAt: 0, forgeBusy: false, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, stopReason: null, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, huntPaths: [], nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, writeQueue: Promise.resolve(), actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null, captchaSolveCount: 0, captchaThreshold: randomCaptchaThreshold(), captchaSolving: false });
   }
   return runtimes.get(id);
 }
@@ -866,6 +866,12 @@ async function forgeTurn(accountId) {
   } catch (error) {
     recordForgeDebug(accountId, "forge.turn.error", { error: String(error?.message || error).slice(0, 160) });
     if (error.name !== "AbortError" && error.statusCode === 403 && error.responseBody?.code === "CAPTCHA_REQUIRED") {
+      if (state.captchaSolving) {
+        log("另一個程序正在解題，等待 8 秒後重試...", accountId);
+        if (state.forgeRunning) forgeSchedule(8000, accountId);
+        return;
+      }
+      state.captchaSolving = true;
       try {
         const preWaitMs = 3000 + Math.floor(Math.random() * 5001);
         log(`偵測到驗證要求，等待 ${(preWaitMs / 1000).toFixed(1)}s 後處理...`, accountId);
@@ -891,6 +897,8 @@ async function forgeTurn(accountId) {
         }
       } catch (captchaError) {
         log(`驗證失敗（${captchaError.message || "未知錯誤"}），停止自動鍛造`, accountId);
+      } finally {
+        state.captchaSolving = false;
       }
       stopForgeRunner(accountId, "偵測到活人驗證");
       return;
@@ -2081,6 +2089,12 @@ async function turn(accountId) {
     else { operation(accountId, "runner.branch", { branch: "hunt" }); debug(accountId, "runner.branch", { branch: "hunt" }); await hunt(c, accountId); }
   } catch (error) {
     if (error.name !== "AbortError" && error.statusCode === 403 && error.responseBody?.code === "CAPTCHA_REQUIRED") {
+      if (state.captchaSolving) {
+        log("另一個程序正在解題，等待 8 秒後重試...", accountId);
+        schedule(8000, accountId);
+        return;
+      }
+      state.captchaSolving = true;
       try {
         const preWaitMs = 3000 + Math.floor(Math.random() * 5001);
         log(`偵測到驗證要求，等待 ${(preWaitMs / 1000).toFixed(1)}s 後處理...`, accountId);
@@ -2107,6 +2121,8 @@ async function turn(accountId) {
         }
       } catch (captchaError) {
         log(`驗證失敗（${captchaError.message || "未知錯誤"}），停止自動狩獵與自動鍛造`, accountId);
+      } finally {
+        state.captchaSolving = false;
       }
       stopForgeRunner(accountId, "偵測到活人驗證");
       stopRunner(accountId, "偵測到活人驗證");
