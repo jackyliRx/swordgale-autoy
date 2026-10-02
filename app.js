@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.23";
+const uiVersion = "0.8.24";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -786,6 +786,9 @@ async function forgeTurn(accountId) {
   if (!state.forgeRunning || state.forgeBusy) return;
   state.forgeBusy = true;
   try {
+    const fc = config(accountId);
+    const forgeSleepMs = sleepDelayMs(fc);
+    if (forgeSleepMs > 0) { const sleepMin = Math.round(forgeSleepMs / 60000); log(`擬人模式：睡眠時段，鍛造暫停 ${sleepMin} 分鐘後繼續`, accountId); state.forgeBusy = false; forgeSchedule(forgeSleepMs, accountId); return; }
     await refreshForgeData(accountId);
     if (!state.forgeRunning) return;
     const workshops = forgeWorkshopsFromProfile(state.forgeProfile);
