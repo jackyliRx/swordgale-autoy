@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.22";
+const uiVersion = "0.8.23";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -667,6 +667,11 @@ async function useForgeRecoveryItem(accountId, workshop, hero) {
 }
 function randomCaptchaThreshold() { return 5 + Math.floor(Math.random() * 11); }
 function huntJitter(c) { return c.humanLike ? Math.floor(Math.random() * 30001) : 0; }
+function scheduleHunt(baseMs, c, accountId) {
+  const jitter = huntJitter(c);
+  if (jitter > 0) log(`擬人模式：下次狩獵加入 ${(jitter / 1000).toFixed(1)}s 隨機延遲`, accountId);
+  schedule(Math.max(1000, baseMs) + jitter, accountId);
+}
 function sleepDelayMs(c) {
   if (!c.humanLike) return 0;
   const now = new Date();
@@ -1971,7 +1976,7 @@ async function hunt(c, accountId) {
     if (accountId === activeId) renderHeroes(accountId);
     log("前行狩獵完成（前往草原秘徑途中）", accountId);
     await checkAndSwapEquipments(c, accountId, result);
-    schedule(Math.max(1000, state.cooldownAt - Date.now()) + huntJitter(c), accountId);
+    scheduleHunt(state.cooldownAt - Date.now(), c, accountId);
     return;
   }
   if (atGrassland && targetZone === "bull-plains") {
@@ -1990,7 +1995,7 @@ async function hunt(c, accountId) {
     if (accountId === activeId) renderHeroes(accountId);
     log("前行狩獵完成（前往猛牛原途中）", accountId);
     await checkAndSwapEquipments(c, accountId, result);
-    schedule(Math.max(1000, state.cooldownAt - Date.now()) + huntJitter(c), accountId);
+    scheduleHunt(state.cooldownAt - Date.now(), c, accountId);
     return;
   }
   const cooldownWaitMs = state.cooldownAt - Date.now();
@@ -2013,7 +2018,7 @@ async function hunt(c, accountId) {
   if (accountId === activeId) renderHeroes(accountId);
   log(forward ? "前行狩獵完成" : "原地狩獵完成", accountId);
   await checkAndSwapEquipments(c, accountId, result);
-  schedule(Math.max(1000, state.cooldownAt - Date.now()), accountId);
+  scheduleHunt(state.cooldownAt - Date.now(), c, accountId);
 }
 function stopForInvalidParty(accountId) {
   const state = runtimeFor(accountId);
