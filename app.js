@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.28";
+const uiVersion = "0.8.29";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -700,7 +700,7 @@ async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
   if (!apiKey) { log("未設定 NoneCap API Key，無法自動解題", accountId); return false; }
   log("偵測到 hCaptcha，呼叫 NoneCap 自動解題...", accountId);
   try { await request("/captcha/display", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId }) }, accountId); } catch {}
-  const nonecapUrl = "https://api.nonecap.com/v1/solves?wait=30";
+  const nonecapUrl = "https://api.nonecap.com/v1/solves?wait=60";
   const nonecapBody = JSON.stringify({ type: "hcaptcha", sitekey, url: API.replace(/\/api$/, "") });
   const nonecapHeaders = { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
   async function callNonecap() {
