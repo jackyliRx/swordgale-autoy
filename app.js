@@ -168,7 +168,7 @@ function config(accountId = activeId) {
   return { target: Number($("target-stage").value), huntZone: $("hunt-zone-select")?.value || "grassland", hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, teamItems: {}, heroItems: {}, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked, autoCaptchaVerify: $("auto-captcha-verify").checked };
 }
 function validConfig(c) { return Number.isInteger(c.target) && c.target > 0 && c.hp >= 1 && c.hp <= 100 && c.sp >= 1 && c.sp <= 100 && c.restHp >= c.hp && c.restHp <= 100 && c.restSp >= c.sp && c.restSp <= 100 && c.restMinutes > 0 && c.alertMinutes >= 1 && (c.huntZone !== "secret-path" || c.target >= 16) && (c.huntZone !== "bull-plains" || c.target >= 11); }
-function defaultSettings() { return { target: 1, huntZone: "grassland", hp: 80, sp: 70, restHp: 90, restSp: 90, useItems: false, teamItems: {}, heroItems: {}, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false, itemRecoveryIncidentEnabled: false, forgeDebugEnabled: false, forgeEnabled: false, forgeWorkshops: {}, autoCaptchaVerify: false, equipAutoSwap: false, equipDurThreshold: 100, heroEquipSettings: {} }; }
+function defaultSettings() { return { target: 1, huntZone: "grassland", hp: 80, sp: 70, restHp: 90, restSp: 90, useItems: false, teamItems: {}, heroItems: {}, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false, itemRecoveryIncidentEnabled: false, forgeDebugEnabled: false, forgeEnabled: false, forgeWorkshops: {}, autoCaptchaVerify: false, autoHcaptchaSolve: false, equipAutoSwap: false, equipDurThreshold: 100, heroEquipSettings: {} }; }
 function loadSettings(account = active()) {
   if (!account) return;
   account.settings = { ...defaultSettings(), ...(account.settings || {}) };
@@ -186,6 +186,7 @@ function loadSettings(account = active()) {
   $("item-recovery-incident-enabled").checked = account.settings.itemRecoveryIncidentEnabled === true;
   $("forge-debug-enabled").checked = account.settings.forgeDebugEnabled === true;
   $("auto-captcha-verify").checked = account.settings.autoCaptchaVerify === true;
+  $("auto-hcaptcha-solve").checked = account.settings.autoHcaptchaSolve === true;
   renderItemSettings(account.id);
   renderEquipSettings(account.id);
 }
@@ -197,7 +198,7 @@ function persistSettings() {
 }
 function configFromForm() {
   const previous = active()?.settings || defaultSettings();
-  return { ...previous, huntZone: $("hunt-zone-select")?.value || "grassland", target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked, autoCaptchaVerify: $("auto-captcha-verify").checked, equipAutoSwap: $("equip-auto-swap")?.checked === true, equipDurThreshold: Number($("equip-dur-threshold")?.value) || 100 };
+  return { ...previous, huntZone: $("hunt-zone-select")?.value || "grassland", target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked, autoCaptchaVerify: $("auto-captcha-verify").checked, autoHcaptchaSolve: $("auto-hcaptcha-solve").checked, equipAutoSwap: $("equip-auto-swap")?.checked === true, equipDurThreshold: Number($("equip-dur-threshold")?.value) || 100 };
 }
 function clearRecoveryTimers(accountId) {
   const state = runtimeFor(accountId);
@@ -762,9 +763,13 @@ async function forgeTurn(accountId) {
         const captchaInfo = await request("/captcha", {}, accountId);
         const challengeId = captchaInfo.pendingCaptchaId;
         if (captchaInfo.type === "hcaptcha" && challengeId != null) {
-          const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
-          if (solved) { log("hCaptcha 驗證通過，繼續自動鍛造", accountId); forgeSchedule(2000, accountId); return; }
-          log("hCaptcha 驗證未通過，停止自動鍛造", accountId);
+          if (config(accountId).autoHcaptchaSolve) {
+            const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
+            if (solved) { log("hCaptcha 驗證通過，繼續自動鍛造", accountId); forgeSchedule(2000, accountId); return; }
+            log("hCaptcha 驗證未通過，停止自動鍛造", accountId);
+          } else {
+            log("偵測到圖形驗證，已停止自動鍛造", accountId);
+          }
         } else if (config(accountId).autoCaptchaVerify && challengeId != null) {
           const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, checked: true }) }, accountId);
           if (verifyResult?.ok === true) { log("非圖形驗證通過，繼續自動鍛造", accountId); forgeSchedule(2000, accountId); return; }
@@ -1966,9 +1971,13 @@ async function turn(accountId) {
         const captchaInfo = await request("/captcha", {}, accountId);
         const challengeId = captchaInfo.pendingCaptchaId;
         if (captchaInfo.type === "hcaptcha" && challengeId != null) {
-          const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
-          if (solved) { log("hCaptcha 驗證通過，繼續自動狩獵", accountId); schedule(2000, accountId); return; }
-          log("hCaptcha 驗證未通過，停止自動狩獵與自動鍛造", accountId);
+          if (config(accountId).autoHcaptchaSolve) {
+            const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
+            if (solved) { log("hCaptcha 驗證通過，繼續自動狩獵", accountId); schedule(2000, accountId); return; }
+            log("hCaptcha 驗證未通過，停止自動狩獵與自動鍛造", accountId);
+          } else {
+            log("偵測到圖形驗證，已停止自動狩獵與自動鍛造", accountId);
+          }
         } else if (config(accountId).autoCaptchaVerify && challengeId != null) {
           const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, checked: true }) }, accountId);
           if (verifyResult?.ok === true) { log("非圖形驗證通過，繼續自動狩獵", accountId); schedule(2000, accountId); return; }
@@ -2107,7 +2116,7 @@ function initAccountEvents() {
   });
   const ocilarInput = $("ocilar-api-key");
   if (ocilarInput) ocilarInput.addEventListener("change", () => { localStorage.setItem(ocilarApiKeyStore, ocilarInput.value.trim()); });
-  for (const id of ["target-stage", "hp-target", "sp-target", "rest-hp-target", "rest-sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console", "item-recovery-incident-enabled", "forge-debug-enabled", "auto-captcha-verify"]) $(id).addEventListener("change", () => {
+  for (const id of ["target-stage", "hp-target", "sp-target", "rest-hp-target", "rest-sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console", "item-recovery-incident-enabled", "forge-debug-enabled", "auto-captcha-verify", "auto-hcaptcha-solve"]) $(id).addEventListener("change", () => {
     persistSettings();
     if (id === "target-stage") updateHuntZoneWarning();
     if (id === "flow-messages" && $("flow-messages").checked) log("已啟用流程訊息", activeId);
