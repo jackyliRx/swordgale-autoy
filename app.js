@@ -1,11 +1,13 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.17";
+const uiVersion = "0.8.18";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
 const itemRecoveryTimelineLimit = 30;
 const forgeDebugLogKey = "autoy.forgeDebugLogs.v1";
 const forgeDebugLogLimit = 200;
+const ocilarApiKeyStore = "autoy.ocilarApiKey.v1";
+const hcaptchaSitekey = "181ea3ce-653a-436a-8410-1e9259e6d0bc";
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let itemRecoveryIncidents = loadItemRecoveryIncidents();
 let forgeDebugLogs = loadForgeDebugLogs();
@@ -657,6 +659,28 @@ async function useForgeRecoveryItem(accountId, workshop, hero) {
     await refreshForgeAfterUncertainWrite(accountId, "forge.recovery.write", error);
   }
 }
+async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
+  const apiKey = (localStorage.getItem(ocilarApiKeyStore) || "").trim();
+  if (!apiKey) { log("未設定 Ocilar API Key，無法自動解題", accountId); return false; }
+  log("偵測到 hCaptcha，呼叫 Ocilar 自動解題...", accountId);
+  try { await request("/captcha/display", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId }) }, accountId); } catch {}
+  try {
+    const resp = await fetch("https://api.ocilar.com/api/v1/solve/hcaptcha", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+      body: JSON.stringify({ sitekey, url: API.replace(/\/api$/, "") })
+    });
+    if (!resp.ok) { log(`Ocilar 請求失敗（HTTP ${resp.status}）`, accountId); return false; }
+    const result = await resp.json();
+    if (!result.token) { log(`Ocilar 解題失敗：${result.message || JSON.stringify(result)}`, accountId); return false; }
+    log(`Ocilar 解題成功（${result.latency_ms ?? "?"}ms，消耗 ${result.credits_used ?? "?"} 點）`, accountId);
+    const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, token: result.token }) }, accountId);
+    return verifyResult?.ok === true;
+  } catch (err) {
+    log(`Ocilar 呼叫失敗：${err.message || String(err)}`, accountId);
+    return false;
+  }
+}
 async function forgeTurn(accountId) {
   const state = runtimeFor(accountId);
   if (!state.forgeRunning || state.forgeBusy) return;
@@ -734,19 +758,22 @@ async function forgeTurn(accountId) {
   } catch (error) {
     recordForgeDebug(accountId, "forge.turn.error", { error: String(error?.message || error).slice(0, 160) });
     if (error.name !== "AbortError" && error.statusCode === 403 && error.responseBody?.code === "CAPTCHA_REQUIRED") {
-      if (config(accountId).autoCaptchaVerify) {
-        try {
-          const captchaInfo = await request("/captcha", {}, accountId);
-          if (captchaInfo.pendingCaptchaId !== null && captchaInfo.pendingCaptchaId !== undefined) {
-            const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId: captchaInfo.pendingCaptchaId, checked: true }) }, accountId);
-            if (verifyResult?.ok === true) { log("非圖形驗證通過，繼續自動鍛造", accountId); forgeSchedule(2000, accountId); return; }
-          }
+      try {
+        const captchaInfo = await request("/captcha", {}, accountId);
+        const challengeId = captchaInfo.pendingCaptchaId;
+        if (captchaInfo.type === "hcaptcha" && challengeId != null) {
+          const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
+          if (solved) { log("hCaptcha 驗證通過，繼續自動鍛造", accountId); forgeSchedule(2000, accountId); return; }
+          log("hCaptcha 驗證未通過，停止自動鍛造", accountId);
+        } else if (config(accountId).autoCaptchaVerify && challengeId != null) {
+          const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, checked: true }) }, accountId);
+          if (verifyResult?.ok === true) { log("非圖形驗證通過，繼續自動鍛造", accountId); forgeSchedule(2000, accountId); return; }
           log("非圖形驗證未通過，停止自動鍛造", accountId);
-        } catch (captchaError) {
-          log(`非圖形驗證失敗（${captchaError.message || "未知錯誤"}），停止自動鍛造`, accountId);
+        } else {
+          log("偵測到活人驗證，已停止自動鍛造", accountId);
         }
-      } else {
-        log("偵測到活人驗證，已停止自動鍛造", accountId);
+      } catch (captchaError) {
+        log(`驗證失敗（${captchaError.message || "未知錯誤"}），停止自動鍛造`, accountId);
       }
       stopForgeRunner(accountId, "偵測到活人驗證");
       return;
@@ -1935,19 +1962,22 @@ async function turn(accountId) {
     else { operation(accountId, "runner.branch", { branch: "hunt" }); debug(accountId, "runner.branch", { branch: "hunt" }); await hunt(c, accountId); }
   } catch (error) {
     if (error.name !== "AbortError" && error.statusCode === 403 && error.responseBody?.code === "CAPTCHA_REQUIRED") {
-      if (config(accountId).autoCaptchaVerify) {
-        try {
-          const captchaInfo = await request("/captcha", {}, accountId);
-          if (captchaInfo.pendingCaptchaId !== null && captchaInfo.pendingCaptchaId !== undefined) {
-            const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId: captchaInfo.pendingCaptchaId, checked: true }) }, accountId);
-            if (verifyResult?.ok === true) { log("非圖形驗證通過，繼續自動狩獵", accountId); schedule(2000, accountId); return; }
-          }
+      try {
+        const captchaInfo = await request("/captcha", {}, accountId);
+        const challengeId = captchaInfo.pendingCaptchaId;
+        if (captchaInfo.type === "hcaptcha" && challengeId != null) {
+          const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
+          if (solved) { log("hCaptcha 驗證通過，繼續自動狩獵", accountId); schedule(2000, accountId); return; }
+          log("hCaptcha 驗證未通過，停止自動狩獵與自動鍛造", accountId);
+        } else if (config(accountId).autoCaptchaVerify && challengeId != null) {
+          const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, checked: true }) }, accountId);
+          if (verifyResult?.ok === true) { log("非圖形驗證通過，繼續自動狩獵", accountId); schedule(2000, accountId); return; }
           log("非圖形驗證未通過，停止自動狩獵與自動鍛造", accountId);
-        } catch (captchaError) {
-          log(`非圖形驗證失敗（${captchaError.message || "未知錯誤"}），停止自動狩獵與自動鍛造`, accountId);
+        } else {
+          log("偵測到活人驗證，已停止自動狩獵與自動鍛造", accountId);
         }
-      } else {
-        log("偵測到活人驗證，已停止自動狩獵與自動鍛造", accountId);
+      } catch (captchaError) {
+        log(`驗證失敗（${captchaError.message || "未知錯誤"}），停止自動狩獵與自動鍛造`, accountId);
       }
       stopForgeRunner(accountId, "偵測到活人驗證");
       stopRunner(accountId, "偵測到活人驗證");
@@ -2075,6 +2105,8 @@ function initAccountEvents() {
     persistSettings();
     updateHuntZoneWarning();
   });
+  const ocilarInput = $("ocilar-api-key");
+  if (ocilarInput) ocilarInput.addEventListener("change", () => { localStorage.setItem(ocilarApiKeyStore, ocilarInput.value.trim()); });
   for (const id of ["target-stage", "hp-target", "sp-target", "rest-hp-target", "rest-sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console", "item-recovery-incident-enabled", "forge-debug-enabled", "auto-captcha-verify"]) $(id).addEventListener("change", () => {
     persistSettings();
     if (id === "target-stage") updateHuntZoneWarning();
@@ -2086,6 +2118,8 @@ function initAccountEvents() {
 }
 function init() {
   initAccountEvents();
+  const ocilarInput = $("ocilar-api-key");
+  if (ocilarInput) ocilarInput.value = localStorage.getItem(ocilarApiKeyStore) || "";
   if (active()) loadSettings();
   render();
   if (active()) loadAccountSnapshot(activeId);
