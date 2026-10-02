@@ -679,7 +679,7 @@ function sleepDelayMs(c) {
   if (!inSleep) return 0;
   const end = new Date(); end.setHours(eh, em, 0, 0);
   if (end <= now) end.setDate(end.getDate() + 1);
-  return end - now;
+  return (end - now) + Math.floor(Math.random() * 30 * 60 * 1000);
 }
 function getOcilarUsage() { try { return JSON.parse(localStorage.getItem(ocilarUsageStore) || "{}"); } catch { return {}; } }
 function saveOcilarUsage(u) { try { localStorage.setItem(ocilarUsageStore, JSON.stringify(u)); } catch {} }
