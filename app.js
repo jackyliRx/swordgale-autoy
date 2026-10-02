@@ -1647,11 +1647,16 @@ async function checkAndSwapEquipments(c, accountId, huntResult) {
   for (const hero of (state.heroes || []).filter((h) => h.selected === true)) {
     const heroIdStr = String(hero.id);
     const hs = (c.heroEquipSettings || {})[heroIdStr] || {};
-    if (!hs.weaponType || hs.noAutoSwap) continue;
-    const hasType = state.equipments.some((e) => String(e.equipped) === heroIdStr && e.type === hs.weaponType);
-    if (!hasType) {
-      if (!needsReplacement.has(heroIdStr)) needsReplacement.set(heroIdStr, new Set());
-      needsReplacement.get(heroIdStr).add(hs.weaponType);
+    if (hs.noAutoSwap) continue;
+    if (hs.weaponType) {
+      const hasType = state.equipments.some((e) => String(e.equipped) === heroIdStr && e.type === hs.weaponType);
+      if (!hasType) {
+        if (!needsReplacement.has(heroIdStr)) needsReplacement.set(heroIdStr, new Set());
+        needsReplacement.get(heroIdStr).add(hs.weaponType);
+      }
+    } else if (!needsReplacement.has(heroIdStr)) {
+      const hasAny = state.equipments.some((e) => String(e.equipped) === heroIdStr);
+      if (!hasAny) needsReplacement.set(heroIdStr, new Set([null]));
     }
   }
   if (needsReplacement.size === 0) return;
@@ -1664,31 +1669,33 @@ async function checkAndSwapEquipments(c, accountId, huntResult) {
     }
     const queue = Array.isArray(heroEquipSetting.queue) ? heroEquipSetting.queue : [];
     for (const type of types) {
+      const anyType = type === null;
+      const typeLabel = anyType ? "（不限類型）" : type;
       let chosen = null;
       if (queue.length > 0) {
         chosen = queue
           .map((id) => state.equipments.find((e) => e.id === id))
-          .find((e) => e && e.type === type && e.state === 0 && e.equipped == null && e.color !== "red" && e.dur >= c.equipDurThreshold) || null;
+          .find((e) => e && (anyType || e.type === type) && e.state === 0 && e.equipped == null && e.color !== "red" && e.dur >= c.equipDurThreshold) || null;
       } else {
         const candidates = state.equipments.filter(
-          (e) => e.type === type && e.state === 0 && e.equipped == null && e.color !== "red" && e.dur >= c.equipDurThreshold
+          (e) => (anyType || e.type === type) && e.state === 0 && e.equipped == null && e.color !== "red" && e.dur >= c.equipDurThreshold
         );
         candidates.sort((a, b) => a.dur - b.dur);
         chosen = candidates[0] || null;
       }
       if (!chosen) {
         if (heroEquipSetting.allowBareHands !== true) {
-          log(`裝備（類型 ${type}）無替換品且不允許空手；停止自動狩獵`, accountId);
-          stopRunner(accountId, `裝備（類型 ${type}）無替換品且不允許空手`);
+          log(`裝備 ${typeLabel} 無替換品且不允許空手；停止自動狩獵`, accountId);
+          stopRunner(accountId, `裝備 ${typeLabel} 無替換品且不允許空手`);
           return;
         }
-        log(`裝備（類型 ${type}）無替換品；允許空手繼續`, accountId);
+        log(`裝備 ${typeLabel} 無替換品；允許空手繼續`, accountId);
         continue;
       }
-      log(`換裝：類型 ${type} 耐久不足，換上耐久 ${chosen.dur} 的替換品`, accountId);
+      log(`換裝：${typeLabel} 耐久不足，換上 ${safe(chosen.name)}（耐久 ${chosen.dur}）`, accountId);
       const equipResult = await request(`/equipments/${encodeURIComponent(chosen.id)}/equip`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ heroId }) }, accountId);
-      if (Array.isArray(equipResult)) state.equipments = equipResult;
-      else if (Array.isArray(equipResult?.equipments)) state.equipments = equipResult.equipments;
+      const newList = Array.isArray(equipResult) ? equipResult : (Array.isArray(equipResult?.equipments) ? equipResult.equipments : null);
+      if (newList) state.equipments = newList;
     }
   }
 }
@@ -1737,7 +1744,7 @@ function renderEquipSettings(accountId = activeId) {
         <strong class="equip-hero-name">${safe(hero.name)}</strong>
         <label class="checkbox-setting"><input type="checkbox" data-equip-no-swap="${heroIdStr}"${noAutoSwap ? " checked" : ""}> 不動切換</label>
         <label class="checkbox-setting"><input type="checkbox" data-equip-bare-hands="${heroIdStr}"${allowBareHands ? " checked" : ""}> 允許空手</label>
-        <label class="equip-type-select-label" title="設定後，換裝觸發時若英雄缺少此類型裝備，會主動補裝">武器種類<select data-equip-weapon-type="${heroIdStr}">${typeOptions}</select></label>
+        <label class="equip-type-select-label" title="設定後，換裝觸發時若英雄缺少此類型裝備，會主動補裝">裝備種類<select data-equip-weapon-type="${heroIdStr}">${typeOptions}</select></label>
       </div>
       <div class="equip-hero-body${noAutoSwap ? " equip-section-disabled" : ""}">
         <div class="equip-queue-col"><div class="equip-col-label">換裝佇列<span class="hint">（依序使用）</span></div><div class="equip-queue-rows">${queueHtml}</div></div>
