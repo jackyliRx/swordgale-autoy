@@ -1647,7 +1647,7 @@ async function checkAndSwapEquipments(c, accountId, huntResult) {
   for (const hero of (state.heroes || []).filter((h) => h.selected === true)) {
     const heroIdStr = String(hero.id);
     const hs = (c.heroEquipSettings || {})[heroIdStr] || {};
-    if (hs.noAutoSwap) continue;
+    if (hs.enabled === false) continue;
     if (hs.weaponType) {
       const hasType = state.equipments.some((e) => String(e.equipped) === heroIdStr && e.type === hs.weaponType);
       if (!hasType) {
@@ -1663,8 +1663,8 @@ async function checkAndSwapEquipments(c, accountId, huntResult) {
   for (const [heroIdStr, types] of needsReplacement) {
     const heroId = Number(heroIdStr);
     const heroEquipSetting = (c.heroEquipSettings || {})[heroIdStr] || {};
-    if (heroEquipSetting.noAutoSwap === true) {
-      log(`英雄 ${heroIdStr} 設定不動切換，跳過換裝`, accountId);
+    if (heroEquipSetting.enabled === false) {
+      log(`英雄 ${heroIdStr} 已停用自動換裝，跳過`, accountId);
       continue;
     }
     const queue = Array.isArray(heroEquipSetting.queue) ? heroEquipSetting.queue : [];
@@ -1716,7 +1716,7 @@ function renderEquipSettings(accountId = activeId) {
   function heroCard(hero) {
     const heroIdStr = String(hero.id);
     const hs = heroSettings[heroIdStr] || {};
-    const noAutoSwap = hs.noAutoSwap === true;
+    const heroEnabled = hs.enabled !== false;
     const allowBareHands = hs.allowBareHands === true;
     const weaponType = hs.weaponType || "";
     const queue = Array.isArray(hs.queue) ? hs.queue : [];
@@ -1742,11 +1742,11 @@ function renderEquipSettings(accountId = activeId) {
     return `<div class="equip-hero-card">
       <div class="equip-hero-header">
         <strong class="equip-hero-name">${safe(hero.name)}</strong>
-        <label class="checkbox-setting"><input type="checkbox" data-equip-no-swap="${heroIdStr}"${noAutoSwap ? " checked" : ""}> 不動切換</label>
+        <label class="checkbox-setting"><input type="checkbox" data-equip-hero-enabled="${heroIdStr}"${heroEnabled ? " checked" : ""}> 啟用</label>
         <label class="checkbox-setting"><input type="checkbox" data-equip-bare-hands="${heroIdStr}"${allowBareHands ? " checked" : ""}> 允許空手</label>
         <label class="equip-type-select-label" title="設定後，換裝觸發時若英雄缺少此類型裝備，會主動補裝">裝備種類<select data-equip-weapon-type="${heroIdStr}">${typeOptions}</select></label>
       </div>
-      <div class="equip-hero-body${noAutoSwap ? " equip-section-disabled" : ""}">
+      <div class="equip-hero-body${!heroEnabled ? " equip-section-disabled" : ""}">
         <div class="equip-queue-col"><div class="equip-col-label">換裝佇列<span class="hint">（依序使用）</span></div><div class="equip-queue-rows">${queueHtml}</div></div>
         <div class="equip-avail-col"><div class="equip-col-label">可加入佇列</div><p class="hint" style="margin:0 0 6px;font-size:.78rem">🔒 = 保存用裝備，禁止自動消耗，只能手動裝備</p><div class="equip-avail-scroll">${availableHtml}</div></div>
       </div>
@@ -1754,7 +1754,7 @@ function renderEquipSettings(accountId = activeId) {
   }
 
   const heroSections = heroes.length ? heroes.map(heroCard).join("") : `<p class="hint">目前沒有勾選出戰角色。</p>`;
-  panel.innerHTML = `<div class="item-settings-heading"><div><h3>裝備自動換裝</h3><p class="hint">狩獵後偵測耐久低於門檻或裝備損毀，自動換上同類型替換品（跳過紅色保存裝備）。</p></div><button type="button" class="section-toggle">收起</button></div>
+  panel.innerHTML = `<div class="item-settings-heading"><div><h3>裝備自動換裝</h3><p class="hint">狩獵後偵測耐久低於門檻或裝備損毀，自動換上同類型替換品（跳過紅色保存裝備）。</p><p class="hint">不想換裝：全部停用請取消勾選「啟用裝備自動換裝」；只停用特定英雄請取消該英雄的「啟用」。</p></div><button type="button" class="section-toggle">收起</button></div>
     <label class="checkbox-setting item-enable"><input id="equip-auto-swap" type="checkbox" /> 啟用裝備自動換裝</label>
     <div class="settings" id="equip-settings-body" style="${enabled ? "" : "opacity:0.5;pointer-events:none"}"><label>換裝耐久門檻（低於此值換裝；替換品耐久須高於此值）<input id="equip-dur-threshold" type="number" min="0" value="${threshold}" /></label></div>
     <div class="item-hero-settings">${heroSections}</div>`;
@@ -1774,8 +1774,8 @@ function renderEquipSettings(accountId = activeId) {
     save();
   }
 
-  panel.querySelectorAll("[data-equip-no-swap]").forEach((cb) => {
-    cb.onchange = () => { updateHeroEquipSetting(cb.dataset.equipNoSwap, { noAutoSwap: cb.checked }); renderEquipSettings(accountId); };
+  panel.querySelectorAll("[data-equip-hero-enabled]").forEach((cb) => {
+    cb.onchange = () => { updateHeroEquipSetting(cb.dataset.equipHeroEnabled, { enabled: cb.checked }); renderEquipSettings(accountId); };
   });
   panel.querySelectorAll("[data-equip-bare-hands]").forEach((cb) => {
     cb.onchange = () => { updateHeroEquipSetting(cb.dataset.equipBareHands, { allowBareHands: cb.checked }); };
