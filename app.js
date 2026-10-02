@@ -675,6 +675,9 @@ async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
     const result = await resp.json();
     if (!result.token) { log(`Ocilar 解題失敗：${result.message || JSON.stringify(result)}`, accountId); return false; }
     log(`Ocilar 解題成功（${result.latency_ms ?? "?"}ms，消耗 ${result.credits_used ?? "?"} 點）`, accountId);
+    const waitMs = 3000 + Math.floor(Math.random() * 5000);
+    log(`等待 ${(waitMs / 1000).toFixed(1)}s 後提交驗證...`, accountId);
+    await new Promise((r) => setTimeout(r, waitMs));
     const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, token: result.token }) }, accountId);
     return verifyResult?.ok === true;
   } catch (err) {
