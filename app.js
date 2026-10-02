@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.24";
+const uiVersion = "0.8.25";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -672,6 +672,11 @@ function scheduleHunt(baseMs, c, accountId) {
   if (jitter > 0) log(`擬人模式：下次狩獵加入 ${(jitter / 1000).toFixed(1)}s 隨機延遲`, accountId);
   schedule(Math.max(1000, baseMs) + jitter, accountId);
 }
+function forgeScheduleJitter(baseMs, fc, accountId) {
+  const jitter = huntJitter(fc);
+  if (jitter > 0) log(`擬人模式：下次鍛造加入 ${(jitter / 1000).toFixed(1)}s 隨機延遲`, accountId);
+  forgeSchedule(baseMs + jitter, accountId);
+}
 function sleepDelayMs(c) {
   if (!c.humanLike) return 0;
   const now = new Date();
@@ -820,7 +825,7 @@ async function forgeTurn(accountId) {
         if (state.forgeRunning) forgeSchedule(delayMs, accountId);
         return;
       }
-      if (state.forgeRunning) forgeSchedule(1000, accountId);
+      if (state.forgeRunning) forgeScheduleJitter(1000, fc, accountId);
       return;
     }
     if (action.kind === "start") {
@@ -852,7 +857,7 @@ async function forgeTurn(accountId) {
         recordForgeDebug(accountId, "forge.start.confirmed", { workshop: Number(workshop), heroId: validated.hero.id, type: validated.type.id, materialTotal: validated.materialTotal });
         forgeWorkshopErrors.delete(`${accountId}:${workshop}`);
         log(`鍛造坊 ${workshop} 開始鍛造（${safe(validated.type.name)}，材料 ${validated.materialTotal} 件）`, accountId);
-        forgeSchedule(2000, accountId);
+        forgeScheduleJitter(2000, fc, accountId);
       } catch (error) { await refreshForgeAfterUncertainWrite(accountId, "forge.start.write", error, { workshop: Number(workshop), heroId: validated.hero.id }); if (state.forgeRunning) forgeSchedule(30000, accountId); }
       return;
     }
