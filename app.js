@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.21";
+const uiVersion = "0.8.22";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -700,7 +700,48 @@ async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
       headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
       body: JSON.stringify({ sitekey, url: API.replace(/\/api$/, "") })
     });
-    if (!resp.ok) { log(`Ocilar 請求失敗（HTTP ${resp.status}）`, accountId); return false; }
+    if (!resp.ok) {
+      if (resp.status >= 500) {
+        log(`Ocilar 暫時無法使用（HTTP ${resp.status}），5 秒後重試一次...`, accountId);
+        await new Promise((r) => setTimeout(r, 5000));
+        const resp2 = await fetch("https://api.ocilar.com/api/v1/solve/hcaptcha", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+          body: JSON.stringify({ sitekey, url: API.replace(/\/api$/, "") })
+        });
+        if (!resp2.ok) { log(`Ocilar 重試失敗（HTTP ${resp2.status}）`, accountId); return false; }
+        const result2 = await resp2.json();
+        if (!result2.token) { log(`Ocilar 解題失敗：${result2.message || JSON.stringify(result2)}`, accountId); return false; }
+        log(`Ocilar 解題成功（重試，${result2.latency_ms ?? "?"}ms，消耗 ${result2.credits_used ?? "?"} 點）`, accountId);
+        const waitMs2 = 10000 + Math.floor(Math.random() * 20001);
+        log(`等待 ${(waitMs2 / 1000).toFixed(1)}s 後提交驗證...`, accountId);
+        await new Promise((r) => setTimeout(r, waitMs2));
+        const verifyResult2 = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, token: result2.token }) }, accountId);
+        if (verifyResult2?.ok !== true) return false;
+        const monthTotal2 = incrementOcilarUsage();
+        const state2 = runtimeFor(accountId);
+        state2.captchaSolveCount = (state2.captchaSolveCount || 0) + 1;
+        log(`hCaptcha 已解題 ${state2.captchaSolveCount}/${state2.captchaThreshold} 次（本月累計 ${monthTotal2}/${ocilarMonthlyLimit}）`, accountId);
+        if (state2.captchaSolveCount >= state2.captchaThreshold) {
+          const pauseMs = (10 + Math.floor(Math.random() * 21)) * 60000;
+          const pauseMin = Math.round(pauseMs / 60000);
+          const wasForgeRunning = state2.forgeRunning;
+          stopRunner(accountId, `hCaptcha 解題次數達上限，暫停 ${pauseMin} 分鐘`);
+          stopForgeRunner(accountId, `hCaptcha 解題次數達上限`);
+          log(`hCaptcha 驗證次數達上限（${state2.captchaThreshold} 次），暫停 ${pauseMin} 分鐘後自動重啟`, accountId);
+          state2.captchaSolveCount = 0;
+          state2.captchaThreshold = randomCaptchaThreshold();
+          setTimeout(() => {
+            log(`暫停結束，重啟自動狩獵${wasForgeRunning ? "與自動鍛造" : ""}`, accountId);
+            startRunner(accountId);
+            if (wasForgeRunning) setForgeEnabled(accountId, true);
+          }, pauseMs);
+          return "paused";
+        }
+        return true;
+      }
+      log(`Ocilar 請求失敗（HTTP ${resp.status}）`, accountId); return false;
+    }
     const result = await resp.json();
     if (!result.token) { log(`Ocilar 解題失敗：${result.message || JSON.stringify(result)}`, accountId); return false; }
     log(`Ocilar 解題成功（${result.latency_ms ?? "?"}ms，消耗 ${result.credits_used ?? "?"} 點）`, accountId);
@@ -2035,7 +2076,7 @@ async function turn(accountId) {
         const challengeId = captchaInfo.pendingCaptchaId;
         log(`驗證類型：${captchaInfo.type || "未知"}`, accountId);
         if (captchaInfo.type === "hcaptcha" && challengeId != null) {
-          log(`圖形驗證自動解題：${config(accountId).autoHcaptchaSolve ? "已啟用" : "未啟用"}（DOM: ${$("auto-hcaptcha-solve")?.checked}，settings: ${config(accountId).autoHcaptchaSolve}）`, accountId);
+          log(`圖形驗證自動解題：${config(accountId).autoHcaptchaSolve ? "已啟用" : "未啟用"}`, accountId);
           if (config(accountId).autoHcaptchaSolve) {
             const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
             if (solved === true) { log("hCaptcha 驗證通過，繼續自動狩獵", accountId); schedule(2000 + Math.floor(Math.random() * 6001), accountId); return; }
