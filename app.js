@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.19";
+const uiVersion = "0.8.20";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -830,7 +830,7 @@ async function forgeTurn(accountId) {
           }
         } else if (config(accountId).autoCaptchaVerify && challengeId != null) {
           const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, checked: true }) }, accountId);
-          if (verifyResult?.ok === true) { log("非圖形驗證通過，繼續自動鍛造", accountId); forgeSchedule(2000, accountId); return; }
+          if (verifyResult?.ok === true) { log("非圖形驗證通過，繼續自動鍛造", accountId); forgeSchedule(2000 + Math.floor(Math.random() * 6001), accountId); return; }
           log("非圖形驗證未通過，停止自動鍛造", accountId);
         } else {
           log("偵測到活人驗證，已停止自動鍛造", accountId);
@@ -2046,7 +2046,7 @@ async function turn(accountId) {
           }
         } else if (config(accountId).autoCaptchaVerify && challengeId != null) {
           const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, checked: true }) }, accountId);
-          if (verifyResult?.ok === true) { log("非圖形驗證通過，繼續自動狩獵", accountId); schedule(2000, accountId); return; }
+          if (verifyResult?.ok === true) { log("非圖形驗證通過，繼續自動狩獵", accountId); schedule(2000 + Math.floor(Math.random() * 6001), accountId); return; }
           log("非圖形驗證未通過，停止自動狩獵與自動鍛造", accountId);
         } else {
           log("偵測到活人驗證，已停止自動狩獵與自動鍛造", accountId);
