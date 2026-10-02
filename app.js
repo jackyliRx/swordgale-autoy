@@ -170,7 +170,7 @@ function config(accountId = activeId) {
   return { target: Number($("target-stage").value), huntZone: $("hunt-zone-select")?.value || "grassland", hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, teamItems: {}, heroItems: {}, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked, autoCaptchaVerify: $("auto-captcha-verify").checked };
 }
 function validConfig(c) { return Number.isInteger(c.target) && c.target > 0 && c.hp >= 1 && c.hp <= 100 && c.sp >= 1 && c.sp <= 100 && c.restHp >= c.hp && c.restHp <= 100 && c.restSp >= c.sp && c.restSp <= 100 && c.restMinutes > 0 && c.alertMinutes >= 1 && (c.huntZone !== "secret-path" || c.target >= 16) && (c.huntZone !== "bull-plains" || c.target >= 11); }
-function defaultSettings() { return { target: 1, huntZone: "grassland", hp: 80, sp: 70, restHp: 90, restSp: 90, useItems: false, teamItems: {}, heroItems: {}, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false, itemRecoveryIncidentEnabled: false, forgeDebugEnabled: false, forgeEnabled: false, forgeWorkshops: {}, autoCaptchaVerify: false, autoHcaptchaSolve: false, equipAutoSwap: false, equipDurThreshold: 100, heroEquipSettings: {} }; }
+function defaultSettings() { return { target: 1, huntZone: "grassland", hp: 80, sp: 70, restHp: 90, restSp: 90, useItems: false, teamItems: {}, heroItems: {}, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false, itemRecoveryIncidentEnabled: false, forgeDebugEnabled: false, forgeEnabled: false, forgeWorkshops: {}, autoCaptchaVerify: false, autoHcaptchaSolve: false, humanLike: false, sleepStart: "01:00", sleepEnd: "07:00", equipAutoSwap: false, equipDurThreshold: 100, heroEquipSettings: {} }; }
 function loadSettings(account = active()) {
   if (!account) return;
   account.settings = { ...defaultSettings(), ...(account.settings || {}) };
@@ -189,6 +189,9 @@ function loadSettings(account = active()) {
   $("forge-debug-enabled").checked = account.settings.forgeDebugEnabled === true;
   $("auto-captcha-verify").checked = account.settings.autoCaptchaVerify === true;
   $("auto-hcaptcha-solve").checked = account.settings.autoHcaptchaSolve === true;
+  $("human-like").checked = account.settings.humanLike === true;
+  $("sleep-start").value = account.settings.sleepStart || "01:00";
+  $("sleep-end").value = account.settings.sleepEnd || "07:00";
   renderItemSettings(account.id);
   renderEquipSettings(account.id);
 }
@@ -200,7 +203,7 @@ function persistSettings() {
 }
 function configFromForm() {
   const previous = active()?.settings || defaultSettings();
-  return { ...previous, huntZone: $("hunt-zone-select")?.value || "grassland", target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked, autoCaptchaVerify: $("auto-captcha-verify").checked, autoHcaptchaSolve: $("auto-hcaptcha-solve").checked, equipAutoSwap: $("equip-auto-swap")?.checked === true, equipDurThreshold: Number($("equip-dur-threshold")?.value) || 100 };
+  return { ...previous, huntZone: $("hunt-zone-select")?.value || "grassland", target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked, autoCaptchaVerify: $("auto-captcha-verify").checked, autoHcaptchaSolve: $("auto-hcaptcha-solve").checked, humanLike: $("human-like").checked, sleepStart: $("sleep-start").value || "01:00", sleepEnd: $("sleep-end").value || "07:00", equipAutoSwap: $("equip-auto-swap")?.checked === true, equipDurThreshold: Number($("equip-dur-threshold")?.value) || 100 };
 }
 function clearRecoveryTimers(accountId) {
   const state = runtimeFor(accountId);
@@ -663,6 +666,21 @@ async function useForgeRecoveryItem(accountId, workshop, hero) {
   }
 }
 function randomCaptchaThreshold() { return 5 + Math.floor(Math.random() * 11); }
+function huntJitter(c) { return c.humanLike ? Math.floor(Math.random() * 30001) : 0; }
+function sleepDelayMs(c) {
+  if (!c.humanLike) return 0;
+  const now = new Date();
+  const [sh, sm] = (c.sleepStart || "01:00").split(":").map(Number);
+  const [eh, em] = (c.sleepEnd || "07:00").split(":").map(Number);
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const startMins = sh * 60 + sm;
+  const endMins = eh * 60 + em;
+  const inSleep = startMins <= endMins ? nowMins >= startMins && nowMins < endMins : nowMins >= startMins || nowMins < endMins;
+  if (!inSleep) return 0;
+  const end = new Date(); end.setHours(eh, em, 0, 0);
+  if (end <= now) end.setDate(end.getDate() + 1);
+  return end - now;
+}
 function getOcilarUsage() { try { return JSON.parse(localStorage.getItem(ocilarUsageStore) || "{}"); } catch { return {}; } }
 function saveOcilarUsage(u) { try { localStorage.setItem(ocilarUsageStore, JSON.stringify(u)); } catch {} }
 function ocilarUsageKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
@@ -1908,7 +1926,7 @@ async function hunt(c, accountId) {
     if (accountId === activeId) renderHeroes(accountId);
     log("前行狩獵完成（前往草原秘徑途中）", accountId);
     await checkAndSwapEquipments(c, accountId, result);
-    schedule(Math.max(1000, state.cooldownAt - Date.now()), accountId);
+    schedule(Math.max(1000, state.cooldownAt - Date.now()) + huntJitter(c), accountId);
     return;
   }
   if (atGrassland && targetZone === "bull-plains") {
@@ -1927,7 +1945,7 @@ async function hunt(c, accountId) {
     if (accountId === activeId) renderHeroes(accountId);
     log("前行狩獵完成（前往猛牛原途中）", accountId);
     await checkAndSwapEquipments(c, accountId, result);
-    schedule(Math.max(1000, state.cooldownAt - Date.now()), accountId);
+    schedule(Math.max(1000, state.cooldownAt - Date.now()) + huntJitter(c), accountId);
     return;
   }
   const cooldownWaitMs = state.cooldownAt - Date.now();
@@ -1968,6 +1986,8 @@ async function turn(accountId) {
   try {
     const c = config(accountId);
     if (!validConfig(c)) throw new Error("請檢查此帳號的自動狩獵設定");
+    const sleepMs = sleepDelayMs(c);
+    if (sleepMs > 0) { const sleepMin = Math.round(sleepMs / 60000); log(`擬人模式：睡眠時段，${sleepMin} 分鐘後繼續`, accountId); schedule(sleepMs, accountId); return; }
     await refreshAccount(accountId);
     if (!state.running) return;
     const party = stopForInvalidParty(accountId);
@@ -2156,7 +2176,7 @@ function initAccountEvents() {
   if (ocilarInput) ocilarInput.addEventListener("change", () => { localStorage.setItem(ocilarApiKeyStore, ocilarInput.value.trim()); });
   const ocilarResetBtn = $("ocilar-reset-usage");
   if (ocilarResetBtn) ocilarResetBtn.addEventListener("click", () => { const u = getOcilarUsage(); delete u[ocilarUsageKey()]; saveOcilarUsage(u); renderOcilarUsage(); log("Ocilar 本月額度已重設"); });
-  for (const id of ["target-stage", "hp-target", "sp-target", "rest-hp-target", "rest-sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console", "item-recovery-incident-enabled", "forge-debug-enabled", "auto-captcha-verify", "auto-hcaptcha-solve"]) $(id).addEventListener("change", () => {
+  for (const id of ["target-stage", "hp-target", "sp-target", "rest-hp-target", "rest-sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console", "item-recovery-incident-enabled", "forge-debug-enabled", "auto-captcha-verify", "auto-hcaptcha-solve", "human-like", "sleep-start", "sleep-end"]) $(id).addEventListener("change", () => {
     persistSettings();
     if (id === "target-stage") updateHuntZoneWarning();
     if (id === "flow-messages" && $("flow-messages").checked) log("已啟用流程訊息", activeId);

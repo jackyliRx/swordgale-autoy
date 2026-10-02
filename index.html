@@ -40,6 +40,8 @@
         <section class="item-settings" id="item-settings" aria-label="補品設定"></section>
         <section class="item-settings" id="forge-settings" aria-label="自動鍛造設定"></section>
         <section class="item-settings" id="equip-settings" aria-label="裝備自動換裝設定"></section>
+        <label class="checkbox-setting"><input id="human-like" type="checkbox" /> 擬人模式（狩獵間隔加入隨機延遲、設定睡眠時段）</label>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:.86rem"><label style="display:flex;gap:6px;align-items:center">睡眠開始<input id="sleep-start" type="time" value="01:00" style="width:110px" /></label><label style="display:flex;gap:6px;align-items:center">睡眠結束<input id="sleep-end" type="time" value="07:00" style="width:110px" /></label></div>
         <label class="checkbox-setting"><input id="auto-captcha-verify" type="checkbox" /> 非圖形驗證（偵測到活人驗證時自動勾選送出）</label>
         <label class="checkbox-setting"><input id="auto-hcaptcha-solve" type="checkbox" /> 圖形驗證自動解題（hCaptcha，需設定 Ocilar API Key）</label>
         <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:.86rem;white-space:nowrap">Ocilar API Key</span><input id="ocilar-api-key" type="password" placeholder="sk-..." autocomplete="off" style="flex:1;min-width:180px;max-width:320px" /><span id="ocilar-usage" style="font-size:.8rem;white-space:nowrap"></span><button id="ocilar-reset-usage" type="button" style="font-size:.8rem;padding:4px 8px">重設額度</button></div>
