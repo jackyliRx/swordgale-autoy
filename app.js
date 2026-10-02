@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.30";
+const uiVersion = "0.8.31";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -1741,7 +1741,7 @@ async function rest(c, accountId) {
 async function checkAndSwapEquipments(c, accountId, huntResult) {
   if (!c.equipAutoSwap) return;
   const state = runtimeFor(accountId);
-  if (!Array.isArray(state.equipments) || state.equipments.length === 0) return;
+  if (!Array.isArray(state.equipments) || state.equipments.length === 0) { log("換裝檢查：裝備清單尚未載入", accountId); return; }
   const updated = huntResult?.equipmentChanges?.updated || [];
   const deletedIds = huntResult?.equipmentChanges?.deletedIds || [];
   const needsReplacement = new Map();
@@ -1778,7 +1778,7 @@ async function checkAndSwapEquipments(c, accountId, huntResult) {
       if (!hasAny) needsReplacement.set(heroIdStr, new Set([null]));
     }
   }
-  if (needsReplacement.size === 0) return;
+  if (needsReplacement.size === 0) { log("換裝檢查：所有英雄裝備狀態正常，無需換裝", accountId); return; }
   for (const [heroIdStr, types] of needsReplacement) {
     const heroId = Number(heroIdStr);
     const heroEquipSetting = (c.heroEquipSettings || {})[heroIdStr] || {};
