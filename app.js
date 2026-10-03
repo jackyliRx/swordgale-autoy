@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.35";
+const uiVersion = "0.8.36";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -1974,15 +1974,31 @@ async function hunt(c, accountId) {
     if (cooldownWaitMs > 0) { debug(accountId, "hunt.cooldown", { cooldownAt: new Date(state.cooldownAt).toISOString(), waitMs: cooldownWaitMs }); return schedule(cooldownWaitMs, accountId); }
     const useForward = state.canForward === true;
     debug(accountId, "hunt.start", { action: useForward ? "forward" : "stay", note: `前往${forkZoneName}途中`, party: partyDebug(party) });
-    const result = await request(useForward ? "/hunt?type=forward" : "/hunt", { method: "POST" }, accountId);
-    const info = result.huntInfo || {};
+    let huntResult;
+    let usedForward = useForward;
+    if (useForward) {
+      try {
+        huntResult = await request("/hunt?type=forward", { method: "POST" }, accountId);
+      } catch (err) {
+        if (err.statusCode === 400) {
+          log(`前行狩獵返回 400，改用原地狩獵（前往${forkZoneName}途中）`, accountId);
+          usedForward = false;
+          huntResult = await request("/hunt", { method: "POST" }, accountId);
+        } else {
+          throw err;
+        }
+      }
+    } else {
+      huntResult = await request("/hunt", { method: "POST" }, accountId);
+    }
+    const info = huntResult.huntInfo || {};
     state.heroes = mergeHeroes(state.heroes, info.heroes || []);
     state.canForward = info.canForward ?? state.canForward;
     state.cooldownAt = localCooldownAt(info.huntAvailableAt, state);
     if (info.paths) state.huntPaths = info.paths;
     if (accountId === activeId) renderHeroes(accountId);
-    log(`${useForward ? "前行" : "原地"}狩獵完成（前往${forkZoneName}途中）`, accountId);
-    await checkAndSwapEquipments(c, accountId, result);
+    log(`${usedForward ? "前行" : "原地"}狩獵完成（前往${forkZoneName}途中）`, accountId);
+    await checkAndSwapEquipments(c, accountId, huntResult);
     scheduleHunt(state.cooldownAt - Date.now(), c, accountId);
     return;
   }
