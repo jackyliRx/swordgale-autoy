@@ -1430,6 +1430,7 @@ async function continueHuntMove(accountId, party) {
   if (currentParty.every((hero) => Number(hero.huntZone) === targetZoneId && Number(hero.huntStage) === 1 && Number(hero.actionState) === 0)) {
     state.huntMovePhase = null;
     state.grasslandHuntedInSession = false;
+    state.huntPaths = [];
     log(`自動狩獵：已抵達${zoneName}第 1 層，開始檢查狩獵條件`, accountId);
     schedule(1000, accountId);
     return;
