@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.34";
+const uiVersion = "0.8.35";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -1965,40 +1965,23 @@ async function hunt(c, accountId) {
   if (atSecretPath && targetZone !== "secret-path") { await beginHuntReturnToTown(accountId, targetZoneId); return; }
   if (atBullPlains && targetZone !== "bull-plains") { await beginHuntReturnToTown(accountId, targetZoneId); return; }
   if (!atGrassland && !atSecretPath && !atBullPlains && !atDarkCave) throw new Error("出戰隊伍不在已驗證的狩獵地圖或位置不一致；請重新讀取確認");
-  if (atGrassland && targetZone === "secret-path") {
-    const forkPath = (state.huntPaths || []).find((p) => Number(p.zoneId) === 10002);
-    if (forkPath) { await beginHuntEnterForkPath(accountId, 10002); return; }
+  if (atGrassland && (targetZone === "secret-path" || targetZone === "bull-plains")) {
+    const forkZoneId = targetZone === "secret-path" ? 10002 : 10001;
+    const forkZoneName = targetZone === "secret-path" ? "草原秘徑" : "猛牛原";
+    const forkPath = (state.huntPaths || []).find((p) => Number(p.zoneId) === forkZoneId);
+    if (forkPath) { await beginHuntEnterForkPath(accountId, forkZoneId); return; }
     const cooldownWaitMs = state.cooldownAt - Date.now();
     if (cooldownWaitMs > 0) { debug(accountId, "hunt.cooldown", { cooldownAt: new Date(state.cooldownAt).toISOString(), waitMs: cooldownWaitMs }); return schedule(cooldownWaitMs, accountId); }
-    if (state.canForward !== true) throw new Error("尚未確認可前行；請檢查狩獵狀態");
-    debug(accountId, "hunt.start", { action: "forward", note: "前往草原秘徑途中", party: partyDebug(party) });
-    const result = await request("/hunt?type=forward", { method: "POST" }, accountId);
+    const useForward = state.canForward === true;
+    debug(accountId, "hunt.start", { action: useForward ? "forward" : "stay", note: `前往${forkZoneName}途中`, party: partyDebug(party) });
+    const result = await request(useForward ? "/hunt?type=forward" : "/hunt", { method: "POST" }, accountId);
     const info = result.huntInfo || {};
     state.heroes = mergeHeroes(state.heroes, info.heroes || []);
     state.canForward = info.canForward ?? state.canForward;
     state.cooldownAt = localCooldownAt(info.huntAvailableAt, state);
     if (info.paths) state.huntPaths = info.paths;
     if (accountId === activeId) renderHeroes(accountId);
-    log("前行狩獵完成（前往草原秘徑途中）", accountId);
-    await checkAndSwapEquipments(c, accountId, result);
-    scheduleHunt(state.cooldownAt - Date.now(), c, accountId);
-    return;
-  }
-  if (atGrassland && targetZone === "bull-plains") {
-    const forkPath = (state.huntPaths || []).find((p) => Number(p.zoneId) === 10001);
-    if (forkPath) { await beginHuntEnterForkPath(accountId, 10001); return; }
-    const cooldownWaitMs = state.cooldownAt - Date.now();
-    if (cooldownWaitMs > 0) { debug(accountId, "hunt.cooldown", { cooldownAt: new Date(state.cooldownAt).toISOString(), waitMs: cooldownWaitMs }); return schedule(cooldownWaitMs, accountId); }
-    if (state.canForward !== true) throw new Error("尚未確認可前行；請檢查狩獵狀態");
-    debug(accountId, "hunt.start", { action: "forward", note: "前往猛牛原途中", party: partyDebug(party) });
-    const result = await request("/hunt?type=forward", { method: "POST" }, accountId);
-    const info = result.huntInfo || {};
-    state.heroes = mergeHeroes(state.heroes, info.heroes || []);
-    state.canForward = info.canForward ?? state.canForward;
-    state.cooldownAt = localCooldownAt(info.huntAvailableAt, state);
-    if (info.paths) state.huntPaths = info.paths;
-    if (accountId === activeId) renderHeroes(accountId);
-    log("前行狩獵完成（前往猛牛原途中）", accountId);
+    log(`${useForward ? "前行" : "原地"}狩獵完成（前往${forkZoneName}途中）`, accountId);
     await checkAndSwapEquipments(c, accountId, result);
     scheduleHunt(state.cooldownAt - Date.now(), c, accountId);
     return;
