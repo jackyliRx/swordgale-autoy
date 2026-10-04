@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.37";
+const uiVersion = "0.8.39";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -670,7 +670,8 @@ async function useForgeRecoveryItem(accountId, workshop, hero) {
 }
 function randomCaptchaThreshold() { return 5 + Math.floor(Math.random() * 11); }
 function huntJitter(c) { return c.humanLike ? Math.floor(Math.random() * 30001) : 0; }
-function scheduleHunt(baseMs, c, accountId) {
+function scheduleHunt(T_send, T_recv, c, accountId) {
+  const baseMs = (T_send + T_recv) / 2 + 10300 - Date.now();
   const jitter = huntJitter(c);
   if (jitter > 0) log(`擬人模式：下次狩獵加入 ${(jitter / 1000).toFixed(1)}s 隨機延遲`, accountId);
   schedule(Math.max(1000, baseMs) + jitter, accountId);
@@ -1978,7 +1979,9 @@ async function hunt(c, accountId) {
     const useForward = state.canForward === true && sessionHunted;
     log(`前往${forkZoneName}途中：大草原 ${Number(party[0]?.huntStage) || "?"} 層，canForward=${state.canForward}，本回合已狩獵=${sessionHunted}　→ ${useForward ? "前行" : "原地狩獵"}`, accountId);
     debug(accountId, "hunt.start", { action: useForward ? "forward" : "stay", note: `前往${forkZoneName}途中`, canForward: state.canForward, sessionHunted, party: partyDebug(party) });
+    const T_send = Date.now();
     const result = await request(useForward ? "/hunt?type=forward" : "/hunt", { method: "POST" }, accountId);
+    const T_recv = Date.now();
     state.grasslandHuntedInSession = true;
     const info = result.huntInfo || {};
     state.heroes = mergeHeroes(state.heroes, info.heroes || []);
@@ -1988,7 +1991,7 @@ async function hunt(c, accountId) {
     if (accountId === activeId) renderHeroes(accountId);
     log(`${useForward ? "前行" : "原地"}狩獵完成（前往${forkZoneName}途中）`, accountId);
     await checkAndSwapEquipments(c, accountId, result);
-    scheduleHunt(state.cooldownAt - Date.now(), c, accountId);
+    scheduleHunt(T_send, T_recv, c, accountId);
     return;
   }
   const cooldownWaitMs = state.cooldownAt - Date.now();
@@ -2002,7 +2005,9 @@ async function hunt(c, accountId) {
   const forward = current < c.target;
   if (forward && state.canForward !== true) throw new Error("尚未確認可前行；請檢查狩獵狀態");
   debug(accountId, "hunt.start", { action: forward ? "forward" : "stay", currentStage: current, targetStage: c.target, party: partyDebug(party) });
+  const T_send = Date.now();
   const result = await request(forward ? "/hunt?type=forward" : "/hunt", { method: "POST" }, accountId);
+  const T_recv = Date.now();
   const updates = result.huntInfo?.heroes || [];
   state.heroes = mergeHeroes(state.heroes, updates);
   state.canForward = result.huntInfo?.canForward ?? state.canForward;
@@ -2011,7 +2016,7 @@ async function hunt(c, accountId) {
   if (accountId === activeId) renderHeroes(accountId);
   log(forward ? "前行狩獵完成" : "原地狩獵完成", accountId);
   await checkAndSwapEquipments(c, accountId, result);
-  scheduleHunt(state.cooldownAt - Date.now(), c, accountId);
+  scheduleHunt(T_send, T_recv, c, accountId);
 }
 function stopForInvalidParty(accountId) {
   const state = runtimeFor(accountId);
