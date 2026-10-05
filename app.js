@@ -859,14 +859,20 @@ async function forgeTurn(accountId) {
             if (solved === "paused") return;
             log("hCaptcha 驗證未通過，停止自動鍛造", accountId);
           } else {
-            log("偵測到圖形驗證，已停止自動鍛造", accountId);
+            const retryMs = 60000 + Math.floor(Math.random() * 30001);
+            log(`偵測到圖形驗證（hCaptcha），請前往遊戲完成驗證，自動鍛造將在 ${Math.round(retryMs / 1000)} 秒後重試`, accountId);
+            forgeSchedule(retryMs, accountId);
+            return;
           }
         } else if (config(accountId).autoCaptchaVerify && challengeId != null) {
           const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, checked: true }) }, accountId);
           if (verifyResult?.ok === true) { log("非圖形驗證通過，繼續自動鍛造", accountId); if (state.huntPausedForCaptcha) { state.huntPausedForCaptcha = false; log("自動狩獵已重啟", accountId); startRunner(accountId); } forgeSchedule(2000 + Math.floor(Math.random() * 6001), accountId); return; }
           log("非圖形驗證未通過，停止自動鍛造", accountId);
         } else {
-          log("偵測到活人驗證，已停止自動鍛造", accountId);
+          const retryMs = 60000 + Math.floor(Math.random() * 30001);
+          log(`偵測到驗證要求，請前往遊戲完成驗證，自動鍛造將在 ${Math.round(retryMs / 1000)} 秒後重試`, accountId);
+          forgeSchedule(retryMs, accountId);
+          return;
         }
       } catch (captchaError) {
         log(`驗證失敗（${captchaError.message || "未知錯誤"}），停止自動鍛造`, accountId);
