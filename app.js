@@ -761,6 +761,7 @@ async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
 async function forgeTurn(accountId) {
   const state = runtimeFor(accountId);
   if (!state.forgeRunning || state.forgeBusy) return;
+  if (state.captchaSolving) { forgeSchedule(10000, accountId); return; }
   state.forgeBusy = true;
   try {
     const fc = config(accountId);
@@ -839,9 +840,8 @@ async function forgeTurn(accountId) {
     recordForgeDebug(accountId, "forge.turn.error", { error: String(error?.message || error).slice(0, 160) });
     if (error.name !== "AbortError" && error.statusCode === 403 && error.responseBody?.code === "CAPTCHA_REQUIRED") {
       if (state.captchaSolving) {
-        log("驗證碼解題中，解題完成後自動重啟鍛造", accountId);
-        state.forgePausedForCaptcha = true;
-        stopForgeRunner(accountId, "驗證碼解題中");
+        log("驗證碼解題中，等待解題完成後繼續鍛造", accountId);
+        forgeSchedule(10000, accountId);
         return;
       }
       state.captchaSolving = true;
@@ -859,20 +859,14 @@ async function forgeTurn(accountId) {
             if (solved === "paused") return;
             log("hCaptcha 驗證未通過，停止自動鍛造", accountId);
           } else {
-            const retryMs = 60000 + Math.floor(Math.random() * 30001);
-            log(`偵測到圖形驗證（hCaptcha），請前往遊戲完成驗證，自動鍛造將在 ${Math.round(retryMs / 1000)} 秒後重試`, accountId);
-            forgeSchedule(retryMs, accountId);
-            return;
+            log("偵測到圖形驗證（hCaptcha），停止自動鍛造", accountId);
           }
         } else if (config(accountId).autoCaptchaVerify && challengeId != null) {
           const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, checked: true }) }, accountId);
           if (verifyResult?.ok === true) { log("非圖形驗證通過，繼續自動鍛造", accountId); if (state.huntPausedForCaptcha) { state.huntPausedForCaptcha = false; log("自動狩獵已重啟", accountId); startRunner(accountId); } forgeSchedule(2000 + Math.floor(Math.random() * 6001), accountId); return; }
           log("非圖形驗證未通過，停止自動鍛造", accountId);
         } else {
-          const retryMs = 60000 + Math.floor(Math.random() * 30001);
-          log(`偵測到驗證要求，請前往遊戲完成驗證，自動鍛造將在 ${Math.round(retryMs / 1000)} 秒後重試`, accountId);
-          forgeSchedule(retryMs, accountId);
-          return;
+          log("偵測到驗證要求，停止自動鍛造", accountId);
         }
       } catch (captchaError) {
         log(`驗證失敗（${captchaError.message || "未知錯誤"}），停止自動鍛造`, accountId);
