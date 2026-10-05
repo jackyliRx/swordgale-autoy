@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.39";
+const uiVersion = "0.8.42";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -347,7 +347,7 @@ function loadStoredForgeTypes() {
     { id: "katana",  name: "太刀",   limit: 20 },
     { id: "axe",     name: "雙手斧", limit: 22 },
     { id: "spear",   name: "長槍",   limit: 18 },
-    { id: "helmet",  name: "頭盔",   limit: 16 },
+    { id: "helmet",  name: "頭盔",   limit: 10 },
     { id: "hat",     name: "帽子",   limit: 10 },
     { id: "armor",   name: "盔甲",   limit: 16 },
     { id: "coat",    name: "大衣",   limit: 12 },
