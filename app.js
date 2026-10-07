@@ -1964,6 +1964,8 @@ function renderEquipSettings(accountId = activeId) {
   const threshold = settings.equipDurThreshold ?? 100;
   const heroSettings = settings.heroEquipSettings || {};
   const allTypes = [...new Set(equipments.map((e) => e.type).filter(Boolean))].sort();
+  const pickPriority = settings.equipPickPriority || "dur_asc";
+  const pickPriorityHintMap = { dur_asc: "耐久最低", atk_desc: "攻擊最高", def_desc: "防禦最高", dur_desc: "耐久最高" };
 
   function heroCard(hero) {
     const heroIdStr = String(hero.id);
@@ -2006,8 +2008,6 @@ function renderEquipSettings(accountId = activeId) {
   }
 
   const heroSections = heroes.length ? heroes.map(heroCard).join("") : `<p class="hint">目前沒有勾選出戰角色。</p>`;
-  const pickPriority = settings.equipPickPriority || "dur_asc";
-  const pickPriorityHintMap = { dur_asc: "耐久最低", atk_desc: "攻擊最高", def_desc: "防禦最高", dur_desc: "耐久最高" };
   panel.innerHTML = `<div class="item-settings-heading"><div><h3>裝備自動換裝</h3><p class="hint">狩獵後偵測耐久低於門檻或裝備損毀，自動換上同類型替換品（跳過紅色保存裝備）。</p><p class="hint">不想換裝：全部停用請取消勾選「啟用裝備自動換裝」；只停用特定英雄請取消該英雄的「啟用」。</p></div><button type="button" class="section-toggle" data-section-toggle>收起</button></div>
     <label class="checkbox-setting item-enable"><input id="equip-auto-swap" type="checkbox" /> 啟用裝備自動換裝</label>
     <div class="settings" id="equip-settings-body" style="${enabled ? "" : "opacity:0.5;pointer-events:none"}"><label>換裝耐久門檻（低於此值換裝；替換品耐久須高於此值）<input id="equip-dur-threshold" type="number" min="0" value="${threshold}" /></label><label>佇列空時替換品挑選方式<select id="equip-pick-priority"><option value="dur_asc"${pickPriority === "dur_asc" ? " selected" : ""}>耐久最低</option><option value="atk_desc"${pickPriority === "atk_desc" ? " selected" : ""}>攻擊最高（atk + 加成）</option><option value="def_desc"${pickPriority === "def_desc" ? " selected" : ""}>防禦最高（def + 加成）</option><option value="dur_desc"${pickPriority === "dur_desc" ? " selected" : ""}>耐久最高</option></select></label></div>
