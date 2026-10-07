@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.47";
+const uiVersion = "0.8.48";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -379,7 +379,7 @@ function validateForgeDraft(draft, { workshops, heroes, mines, types }) {
   }
   return { ok: true, materialTotal, type, hero, selectedMines: [...merged].map(([itemId, quantity]) => ({ itemId: Number(itemId), quantity })) };
 }
-function nextForgeAction({ workshops, heroes, drafts, skippedHeroIds = new Set(), enabledCompleteOnly = false }) {
+function nextForgeAction({ workshops, heroes, drafts, skippedHeroIds = new Set(), enabledCompleteOnly = false, forgeDefaultName = "" }) {
   // 1. 先完成可完成的鍛造（跳過卡死英雄；boot scan 後只對勾選坊完成）
   for (const hero of heroes || []) {
     const as = Number(hero.actionState);
@@ -405,7 +405,7 @@ function nextForgeAction({ workshops, heroes, drafts, skippedHeroIds = new Set()
     const draft = drafts?.[workshop];
     if (!draft?.enabled) continue;
     const hero = eligibleHeroes.find((entry) => String(entry.id) === String(draft.heroId));
-    if (hero && String(draft.name || "").trim() && draft.type && Array.isArray(draft.selectedMines) && draft.selectedMines.length) return { kind: "start", workshop: Number(workshop), heroId: hero.id };
+    if (hero && String(draft.name || forgeDefaultName || "").trim() && draft.type && Array.isArray(draft.selectedMines) && draft.selectedMines.length) return { kind: "start", workshop: Number(workshop), heroId: hero.id };
   }
   // 4. 無可開始的坊 → 等最近完成的鍛造
   if (soonestWait) return { kind: "wait", ...soonestWait };
@@ -873,7 +873,7 @@ async function forgeTurn(accountId) {
     const drafts = forgeDrafts(accountId, workshops);
     const skippedCompleteHeroes = new Set([...forgeCompleteFailures.entries()].filter(([k, v]) => k.startsWith(accountId + ":") && v >= FORGE_COMPLETE_SKIP_THRESHOLD).map(([k]) => k.slice(accountId.length + 1)));
     const enabledCompleteOnly = state.forgeBootScanned === true;
-    const action = nextForgeAction({ workshops, heroes: state.heroes, drafts, skippedHeroIds: skippedCompleteHeroes, enabledCompleteOnly });
+    const action = nextForgeAction({ workshops, heroes: state.heroes, drafts, skippedHeroIds: skippedCompleteHeroes, enabledCompleteOnly, forgeDefaultName: config(accountId).forgeDefaultName || "" });
     if (!state.forgeBootScanned && action.kind !== "complete") state.forgeBootScanned = true;
     recordForgeDebug(accountId, "forge.turn.action", { kind: action.kind, heroId: action.heroId ?? null, workshop: action.workshop ?? null, actionCompleteTime: action.actionCompleteTime ?? null, ...(skippedCompleteHeroes.size ? { skippedCompleteHeroes: [...skippedCompleteHeroes].map((s) => s.split(":")[0]) } : {}) });
     if (action.kind === "wait") { recordForgeDebug(accountId, "forge.wait", { workshop: action.workshop, waitMs: forgeWaitMs(action.actionCompleteTime) }); forgeSchedule(forgeWaitMs(action.actionCompleteTime), accountId); return; }
