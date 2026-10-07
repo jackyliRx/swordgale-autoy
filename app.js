@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.46";
+const uiVersion = "0.8.47";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -458,7 +458,7 @@ function saveForgeRecipes(recipes) { try { localStorage.setItem("autoy.forgeReci
 function renderForgeRecipeDialog(accountId = activeId) {
   const state = runtimeFor(accountId);
   const recipes = loadForgeRecipes();
-  const typeOptions = state.forgeTypes.map((t) => `<option value="${safe(t.id)}">${safe(t.name)}</option>`).join("");
+  const typeOptions = state.forgeTypes.map((t) => `<option value="${safe(t.id)}">${safe(t.name)}（材料上限 ${Number(t.limit)}）</option>`).join("");
   const MINE_ORDER = ["土石", "木材", "金屬", "狩獵", "其他"];
   const availableMines = state.forgeMines.filter((mine) => Number(mine.available) > 0);
   const mineGroups = {};
