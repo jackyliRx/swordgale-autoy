@@ -1,220 +1,37 @@
-﻿# Autoy：目前任務與手動錄製清單
+# Autoy 待辦任務
 
-## 目前已完成
+## 功能一：自動換裝替換品挑選方式
+- [x] 新增帳號全域設定 `equipPickPriority`（`dur_asc` / `atk_desc` / `def_desc` / `dur_desc`）
+- [x] `defaultSettings()` 補預設值 `dur_asc`
+- [x] `pickFromList()` 的 `candidates.sort` 改依設定排序（`atk + plus.atk` 合計）
+- [x] `renderEquipSettings()` 換裝耐久門檻旁新增 `<select>` UI
+- [x] 佇列為空的 hint 文字改為動態反映目前挑選方式
 
-- GitHub Pages 靜態網站與多 token 帳號設定。
-- Tampermonkey 半自動登入切換器：保存帳號別名與使用者名稱、填入官方登入欄位、在密碼已由瀏覽器密碼管理器填入後送出官方表單；密碼、Cookie、驗證碼、OTP 與 token 不會保存或記錄。
-- 半自動登入切換器提供「登出並清除本站 Local Storage」：使用者確認後執行 `myteam.swordgale.online` origin 的 `localStorage.clear()` 並導向 `/login`；HTTP-only Cookie 與官方 CAPTCHA／OTP／裝置驗證不由外掛處理。
-- 同帳號只使用 `selected: true` 的 1 至 4 名出戰英雄。
-- 全部休息、完成休息、原地狩獵、狩獵前行、狩獵死亡結果、全部重生啟動與完成，以及回城／前往大草原兩方向移動流程的 Tampermonkey 實際錄製。
-- 多地圖狩獵支援：大草原（zone 1）、草原秘徑（fork zone 10002，大草原第 16 層進入，進入後 huntStage: 16，目標設 16 原地狩獵）、猛牛原（fork zone 10001，大草原第 11 層進入，進入後 huntStage: 11，目標設 11 原地狩獵）、黑暗山洞（zone 2）；各地圖進入、前行、原地狩獵、回程 API 均已錄製確認。
-- 通用地圖導航架構：`beginHuntMoveToZone`（主地圖移動，約 1 分鐘）、`beginHuntEnterForkPath`（秘境瞬間進入）、`beginHuntReturnToTown`（回程 `/move/0`，約 1 分鐘）、`continueHuntMove`（等待移動完成與接續出發）；切換地圖時自動偵測當前位置並補回程步驟。
-- 秘境地圖（草原秘徑、猛牛原）不支援退一層，只能回城；從秘境切換地圖自動走回城→出發流程。
-- 非圖形驗證（autoCaptchaVerify）：偵測到 CAPTCHA_REQUIRED 時，若已勾選則自動呼叫 `GET /captcha` 取得 `pendingCaptchaId` 並送出 `POST /captcha/verify { checked: true }`；驗證失敗或未勾選則停止自動狩獵與自動鍛造。
-- 目標地圖切換時，若隊伍目前在秘境或主副地圖，顯示確認對話框防止誤操作；切換後自動存檔設定。
-- 草原秘徑第 25 層超級綠水靈死透風險警告（目標設 ≥ 25 時顯示）；猛牛原目標設 < 11 時顯示入場樓層提示。
-- Tampermonkey API Recorder 可記錄 request 與 response，並遮罩 token、Authorization、Cookie 等敏感值。
-- API 錄製文件只保留有對應 Tampermonkey JSON 的實際錄製資料。
-- 自動狩獵已串接讀取出戰名單、檢查狀態與冷卻、移動／狩獵、等待休息、目標樓層控制及死亡復原等獨立操作。
-- 一般死亡會使用帳號批次「全部重生」，不因未勾選角色死亡而阻擋；等待帳號內所有一般死亡角色可完成後，再呼叫批次完成。
-- 自動狩獵偵測出戰隊伍死亡後可接續移動與復原流程；一般死亡批次重生，出戰死透角色逐角轉生，恢復存活後再檢查 HP／SP 並續戰。
-- 一般死亡重生期間，存活且已勾選的出戰角色會自動全部休息；兩種行動皆依伺服器完成時間等待，完成重生後再完成休息並恢復狩獵。
-- 戰報閱讀提供手動列表、單筆詳情與本地摘要；不使用背景輪詢或自動讀取歷史戰報。
+## 功能二：全域鍛造裝備名稱預設
+- [x] 新增帳號全域設定 `forgeDefaultName`（字串）
+- [x] `defaultSettings()` 補預設值 `""`
+- [x] `validateForgeDraft()` 取名稱改為 `draft.name || config(accountId).forgeDefaultName`
+- [x] `renderForgeSettings()` 鍛造坊清單上方新增「全域裝備名稱」輸入框
+- [x] 各鍛造坊「裝備名稱」輸入框為空時顯示 fallback 提示（↳ 使用全域名稱：「xxx」）
 
-## 目前進度與待辦
+## 功能三：全域裝備配方庫（跨帳號共用）
+- [x] 配方庫獨立儲存於 `autoy.forgeRecipes.v1`（localStorage 頂層，不屬於任何帳號）
+- [x] 每筆配方：`{ id, label, name, type, selectedMines[], recoveryItemId }`
+- [x] 新增讀取/儲存配方庫的 helper（`loadForgeRecipes()` / `saveForgeRecipes()`）
+- [x] 新增 `renderForgeRecipeDialog()` / dialog HTML
+- [x] 配方庫 dialog：列出現有配方、新增配方表單（label、name、type、材料）、刪除
+- [x] 各鍛造坊新增「套用配方」下拉，套用後覆蓋 name/type/selectedMines/recoveryItemId
+- [x] 鍛造標題列右側新增「配方庫」按鈕（與「啟動鍛造」並排）
 
-操作流程依已錄到的 API 與介面操作分別串接；完整循環實測是上線後驗收項目，不是串接各操作的前置條件。原始錄製 JSON 留在本機，不推送 GitHub。
+## 功能六：配方庫匯出 / 匯入
+- [x] 配方庫 dialog 新增「複製 JSON」按鈕，將 `forgeRecipes` 匯出為 JSON 字串
+- [x] 新增「貼上匯入」文字框 + 確認按鈕，解析 JSON 後合併或覆蓋現有配方
+- [x] 匯入時做基本格式驗證（必要欄位檢查），錯誤時顯示提示
 
-| 優先 | 操作 | 需要確認的 API 與資料 |
-| --- | --- | --- |
-| P0 驗收 | 自動死亡恢復後續戰 | 在遊戲逐步驗證已串接的回城、重生／轉生、前往大草原、HP／SP 檢查及恢復狩獵；每一步核對 request、response 與最新狀態，錯誤時確認該帳號停止且不重複送出寫入請求。 |
-| P1 文件 | 帳號英雄完整列表 | 整理 `GET /api/heroes` 的完整清單欄位與 `selected`、`actionState`、`perished` 判斷規則，並與實際多角色帳號核對。 |
-| P1 文件 | 死透：逐一轉生 | 已觀察 `POST /api/heroes/{heroId}/reincarnate` 成功；補齊去識別化 request／response 摘要及轉生後角色狀態。 |
-| P1 | 單一行動完成 | 記錄不同 `actionState` 的 `POST /api/heroes/{heroId}/completeAction` 前置條件及 response；重生完成樣本優先。 |
-| P1 | 攻擊與後退 | 等 `attackAvailableAt` 或可後退時，各操作錄一次。 |
-| P1 | CAPTCHA 狀態 | 僅錄取讀取狀態與 UI；不自動繞過或提交 CAPTCHA。 |
+## 功能四：未讀取時啟動鍛造按鈕禁用（方案 A）
+- [x] `renderForgeSettings()` 判斷 `state.forgeDataUpdatedAt == null`
+- [x] 為 null 時「啟動鍛造」改為 `disabled`，標題列下方顯示「請先按「重新讀取」」提示
 
-## 自動鍛造（runner 原型已完成；介面與 API 排程待修正）
-
-### 已完成的原型
-
-- 已建立帳號與鍛造坊 target 分離的設定資料模型：角色、名稱、類型、材料、排程與 SP 補品。
-- runner 每輪重新讀取 profile、英雄、背包與官方類型資料：優先完成可完成鍛造、依 `actionCompleteTime` 等待、再驗證並開始閒置鍛造坊。
-- 開始、完成與補品寫入後皆重讀權威狀態；中止、逾時或不完整回應只重讀，不會重送同一寫入。無效設定會跳過並留待後續週期；SP 為 0 而無指定可用補品時只停止鍛造。
-- 已建立開始／完成鍛造的安全重讀與不重送原型；原始 recorder JSON 不納入 Git。
-
-### 發現的阻斷問題與修正規格
-
-- **設定介面不可依賴帳號啟用開關。** 主畫面必須始終顯示自動鍛造設定區；尚未讀取時顯示載入狀態與重新讀取入口。資料到位後依序顯示鍛造坊、角色、名稱、類型、材料、該鍛造坊排程及 SP 補品。帳號「啟用此帳號自動鍛造」只能在至少一個鍛造坊設定完整且已啟用後使用；它只啟動已選定的排程，不能取代設定介面。
-- **自動狩獵與自動鍛造共用全域 4 槽 API 排程。** 所有讀寫都要進入同一個上限為 4 的排程器；同帳號重複的英雄／背包讀取必須合併或等待既有讀取，且自動狩獵讀取優先。不得因鍛造刷新同時對同帳號發出重複 `/heroes`、`/items`、`/profile`，以免拖慢或停止自動狩獵。
-- **寫入仍依帳號序列化。** 補品、狩獵、開始鍛造與完成鍛造不可同時送出；等待或重讀不能取消／停止另一個 runner。
-- **`loadLiveForgeTypes()` CORS 阻斷（已確認根因，修正中）。** 原始實作用兩個裸 `fetch()` 跨 origin 抓遊戲首頁 HTML 與 `Forge-*.js` bundle，這兩個 call 完全繞過全域 4 槽 queue，且遊戲靜態資源沒有 CORS header，導致「Failed to fetch」。修正方案：由 `autoy-api-recorder.user.js`（同 origin，無 CORS 限制）在遊戲鍛造頁面自動提取類型資料並寫入 `localStorage` 的 `autoy.forgeTypes.v1`；`app.js` 改從該 key 讀取，裸 `fetch()` 全數移除，嚴格遵守 4 槽上限。
-- 在上述修正與實際遊戲驗收前，不得宣稱自動鍛造完成或發布新版本。
-
-### 已確認的操作流程
-
-1. 選擇鍛造坊（寫入請求中的 `target`）。
-2. 選擇閒置且可鍛造的角色（`heroId`）。
-3. 輸入裝備名稱（`name`）。
-4. 選擇裝備類型（`type`）。
-5. 從背包材料清單選取材料與各自數量（`selectedMines`）。
-6. 依裝備類型套用材料總數上限；例如太刀的上限為 20 個。實作前須補齊每個類型的實際上限來源或錄製資料，不可推測。
-7. 開始鍛造。
-8. 到達伺服器標示的完成時間後，完成鍛造。
-
-### 已錄製且確認的 API
-
-- 開始鍛造：`POST /api/forge`
-  - JSON body 欄位：`heroId`、`target`、`name`、`type`、`selectedMines`。
-  - `selectedMines` 為 `{ itemId, quantity }` 陣列；每個材料必須有正整數數量。
-  - 成功後回傳英雄與背包／材料快照；被派工的英雄有 `actionState`、`actionTarget`、`actionStart`、`actionCompleteTime`，且尚不可完成時 `canComplete: false`。
-- 完成鍛造：`POST /api/heroes/{heroId}/completeForge`
-  - 無 request body。
-  - 成功後英雄回到閒置：`actionState: 0`、`actionTarget: null`，不再帶有鍛造的開始／完成時間欄位。
-- 狀態確認：`GET /api/heroes/{heroId}/statuses`，已錄得空狀態回應；它不能單獨證明鍛造材料或成品結果。
-- 背包資料：`GET /api/items` 回傳 `mines` 與 `items` 的 `id`、`quantity`、`available`，可供鍛造前後材料快照比較。
-- 英雄與背包狀態：`GET /api/profile`（`forgeExpanded` 決定鍛造坊數）、`GET /api/heroes`（`actionState: 4` 為鍛造進行中）、`GET /api/items`（`items` + `mines` 完整欄位）均已錄製確認。
-
-### 實作前仍須補齊的資料
-
-- 每一種裝備類型的合法 `type` 值與材料總數上限；目前只確認太刀上限為 20。
-- `target` 的鍛造坊對照表與可選範圍。
-- **鍛造進行中 `actionState` 已確認為 `4`**（先前原型誤用 `5`，已於 v0.7.21 修正）。
-- `forgeExpanded: N` → 鍛造坊 `target` 1 至 `N+1`（已由 profile 錄製確認）。
-- 伺服器如何回報成品裝備、品質／屬性與失敗情況；現有開始鍛造回應只有英雄與背包快照。
-- 材料實際扣除的時點（開始或完成）與失敗時的扣料規則。
-- 開始鍛造的安全防護：角色必須閒置、材料庫存足夠、名稱與類型有效、材料數量不超過該類型上限；任一項不符不得送出寫入請求。
-- 完成鍛造的安全防護：僅在 `canComplete: true` 時發送；中止或逾時後必須先重新讀取英雄與背包，不可重送可能已成功的寫入請求。
-
-### 預定驗收
-
-- 在不執行自動鍛造前，面板必須能顯示目前可鍛造角色、材料庫存、選擇的材料總數與該類型上限。
-- 寫入前要做本地驗證；寫入後要以英雄狀態與背包快照驗證，不以單一 HTTP 成功回應判定完成。
-- 鍛造進行中不可重複派工同一角色；完成鍛造不可重送。
-- 不保存或輸出 token、Cookie、角色名稱、完整錄製 request／response 或原始 API recorder JSON。
-
-### 實作計畫（第一階段已完成）
-
-**目標：** 在 Autoy 面板提供帳號獨立的自動鍛造設定、執行與去敏紀錄；所有可選項均以遊戲當前資料為準，不寫死工作坊數量、裝備類型、材料上限或可用角色。
-
-**設定與工作歸屬：** 長期設定以 `帳號 + 鍛造坊 target` 為主：裝備名稱、裝備類型、材料組合、可用補品與補品優先順序都跟隨鍛造坊。每次鍛造工作再指定一名當前可用角色；派工、完成與實際材料使用的驗證仍以該角色為主。角色替換時保留鍛造坊設定，只重新選擇角色。
-
-1. **補齊動態鍛造介面資料來源**（已完成）
-   - 手動錄製「開啟／刷新鍛造介面」的完整讀取流程，確認工作坊清單、裝備類型、各類型材料上限、官方判定可選角色的來源。
-   - 建立去敏 API 摘要；只保留方法、端點、公開欄位與行為規則。
-   - 未確認資料來源前，不實作固定的 5 個工作坊、固定類型清單或固定上限。
-
-2. **建立鍛造資料讀取層**（CORS 阻斷修正中）
-   - 修改：`app.js`、`tools/autoy-api-recorder.user.js`。
-   - `app.js`：移除 `loadLiveForgeTypes()` 中的兩個裸 `fetch()`，改為同步讀取 `localStorage.autoy.forgeTypes.v1`；無資料時拋出明確提示。
-   - `autoy-api-recorder.user.js`：頁面載入後掃描 `<script src>` 找 `Forge-*.js`，fetch（同 origin）並以相同 regex 解析 `{id, name, limit}`，寫入 `autoy.forgeTypes.v1`；Recorder 面板顯示目前快取種類數。
-   - 初次使用前須在遊戲鍛造頁面開啟 Recorder；之後只在遊戲更新新增種類時才需重新造訪。
-   - 修正後所有 API request 嚴格走全域 4 槽 queue，無例外。
-
-3. **建立帳號獨立的鍛造設定與面板**
-   - 修改：`index.html`、`app.js`。
-   - 依最新工作坊資料動態顯示選項；工作坊數量增減後不需改版即可更新。
-   - 依最新裝備類型資料顯示類型與材料總數上限；切換類型時重新驗證選材。
-   - 角色清單只顯示官方資料判定可鍛造、且本地再次確認為未死亡與閒置的角色；不保存角色名稱。
-   - 裝備名稱由使用者輸入；材料只可從目前可用庫存選擇。
-   - 每個鍛造坊各自保存材料組合與補品策略；角色選取只屬於目前或下一筆鍛造工作，不覆蓋其他鍛造坊設定。
-
-4. **建立材料選取與開始前驗證**
-   - 修改：`app.js`；新增：`tests/forge-validation.test.js`。
-   - 驗證材料 ID、正整數數量、`available` 庫存、材料總數不超過目前選定類型上限、角色未死亡且閒置、工作坊與類型仍在最新清單中、裝備名稱非空。
-   - 任一驗證失敗時，不送出 `POST /api/forge`。
-   - 測試：庫存不足、超過太刀 20 個上限、未知類型上限、角色忙碌／死亡、工作坊已失效、名稱空白及正常有效組合。
-
-5. **執行開始鍛造並驗證派工結果**
-   - 修改：`app.js`；擴充：`tests/forge-validation.test.js`。
-   - 僅在本地驗證通過後送出已確認的 `POST /api/forge`。
-   - 回應或逾時後重新讀取英雄與背包；僅在角色顯示進行中鍛造狀態時判定已派工。
-   - 請求中止、逾時或回應不完整時不得重送；先讀取最新狀態，避免重複扣料或重複派工。
-
-6. **等待與完成鍛造**
-   - 修改：`app.js`；擴充：`tests/forge-validation.test.js`。
-   - 以伺服器提供的 `actionCompleteTime` 與 `canComplete` 判定可完成時機，不建立固定間隔輪詢。
-   - 僅在最新英雄資料為 `canComplete: true` 時送出 `POST /api/heroes/{heroId}/completeForge`。
-   - 中止或逾時後先重新讀取英雄與背包；若已回到閒置則視為已完成，不重送完成請求。
-   - 完成後讀取實際執行角色的 SP。SP 未滿 100% 時，依該鍛造坊已選補品與優先順序嘗試補滿；每次使用後重新確認 SP 與背包庫存。
-   - 若沒有可用補品且角色 SP 為 0，停止該帳號的自動鍛造子流程並記錄原因；不得停止、暫停或修改自動狩獵流程。
-
-7. **建立去敏鍛造紀錄與檢視工具**
-   - 修改：`app.js`、`index.html`、`README.md`；新增：`tests/forge-history.test.js`。
-   - 每次鍛造保留時間、工作坊代號、去識別角色參照、裝備類型、材料 ID／數量、開始前／派工後／完成後材料差值、SP 前後差值、補品使用結果、階段、結果與錯誤分類。
-   - 材料使用紀錄以「帳號 + 鍛造坊 + 本次工作」分開保存，並帶入實際執行角色參照；背包雖為帳號共用，仍要以每次工作宣告的材料組合和前後快照避免誤歸因。
-   - 不記錄 token、Cookie、角色名稱、裝備名稱、完整 request／response 或原始錄製 JSON。
-   - 提供帳號獨立檢視、複製去敏 JSON、清除紀錄；設定預設關閉，未啟用時不寫入長期紀錄。
-
-8. **整合驗收與文件同步**
-   - 修改：`README.md`、`task.md`、必要的測試檔與版本顯示位置。
-   - 執行：`node tests/forge-validation.test.js`、`node tests/forge-history.test.js`、既有回歸測試、`node --check app.js`、`git diff --check`。
-   - 手動驗收一筆鍛造：動態資料載入、選材上限、工作坊設定換角、開始派工、材料差異、伺服器完成時間、完成鍛造、SP 補品、SP 為 0 且無補品時僅停止自動鍛造、去敏紀錄與中止復原。
-   - 確認所有驗收通過後，才另行討論版本更新、commit 與 push。
-
-## 每次交付的驗收
-
-- JSON 有成對 request／response；寫入 API 顯示成功狀態或明確失敗原因。
-- 摘要記錄方法、端點、request body、有用 response 欄位、前置條件及等待時間。
-- 公開文件不包含角色名稱、帳號資料、區域玩家清單或 token。
-- 半自動登入切換器：新增、選擇、更新及刪除帳號別名時，只保存別名與使用者名稱；登入頁可填入帳號；密碼未由瀏覽器填入時不得送出登入；清除 Local Storage 前必須顯示影響範圍確認。
-
-## 地圖管理設計
-
-- 地點清單使用遊戲提供的地圖 ID、名稱、種類與可狩獵資訊；城鎮等特殊地點使用已確認的位置資料補入。
-- 路線獨立記錄為 `fromZoneId + toZoneId -> moveActionId`，不把 `/move/{n}` 的操作參數當成地圖 ID。
-- 每條路線標記尚未錄製、啟動已確認、完成已確認；完成座標需由 `/move/complete` 與 `/huntInfo` 核對，通過後才允許自動導航。
-- 已確認並實作的地圖路線：
-  - 初始之鎮 ↔ 大草原：`/move/1` / `/move/0` + `/move/complete`（約 1 分鐘）
-  - 初始之鎮 ↔ 黑暗山洞：`/move/2` / `/move/0` + `/move/complete`（約 1 分鐘）
-  - 大草原第 16 層 → 草原秘徑：`/moveForkPath/10002`（瞬間）；回程：`/move/0` → `/move/complete` → `/move/{n}`
-  - 大草原第 11 層 → 猛牛原：`/moveForkPath/10001`（瞬間）；回程：`/move/0` → `/move/complete` → `/move/{n}`
-  - 秘境地圖無退一層，`canBack: false` 為秘境內移動限制，不影響回程城鎮指令
-- [ ] 實作地圖管理介面：顯示地點、目前位置、可用路線和驗證狀態，並可設定帳號狩獵目的地與樓層。新地圖先列為未驗證，補齊啟動和完成錄製後才允許自動導航。
-
-## 自動狩獵流程
-
-`GET /api/heroes` 確認出戰名單 → `GET /api/huntInfo` 確認位置與冷卻 → 依地圖路線和目標樓層執行移動／狩獵 → 偵測出戰死亡後接續移動與復原 → 重新檢查隊伍狀態、HP／SP 及冷卻 → 恢復狩獵。各獨立操作已依已知 API 流程串接；上線後仍需在遊戲觀察整段循環與錯誤復原表現。
-
-## 裝備自動換裝
-
-### API
-- `GET /api/equipments` → 裝備完整清單；每筆 `{ id, name, type, quality, dur, fullDur, equipped (heroId|null), state (0=未裝備|1=已裝備) }`
-- `POST /api/equipments/{id}/equip` body `{ "heroId": N }` → 回傳更新後完整裝備清單（陣列）
-
-### 狀態管理
-- 手動讀取時呼叫 `GET /api/equipments` → 存入 `state.equipments`（陣列）
-- 每次狩獵後，更新 `state.equipments`：
-  - `equipmentChanges.updated[{id, dur}]` → 更新對應項目的 `dur`
-  - `equipmentChanges.deletedIds` → 從清單移除（裝備損毀）
-- 換裝後，以 POST 回傳的完整清單取代 `state.equipments`
-
-### 換裝觸發（每次狩獵後）
-1. `deletedIds` 非空 → 裝備損毀，立即尋找替換
-2. `equipmentChanges.updated` 中 `dur < equipDurThreshold` → 耐久低於門檻，立即尋找替換
-
-注意：必須在更新 `state.equipments` 之前，先從舊清單查出損毀裝備的 `equipped`（heroId），因為刪除後就無法追蹤歸屬。
-
-### 替換選擇邏輯
-- 篩選條件：`type === 損毀裝備.type && equipped === null && state === 0`
-- 選最高 `dur`
-- 無替換品 + 該角色 `allowBareHands === false` → 停止自動狩獵並記錄原因
-- 無替換品 + 該角色 `allowBareHands === true` → 繼續（允許空手）
-
-### 設定
-- `equipAutoSwap: false` — 全域開關（checkbox）
-- `equipDurThreshold: 100` — 固定耐久值門檻（數字輸入，低於此值觸發換裝）
-- `heroEquipSettings: {}` — 每角色設定，key 為 heroId 字串：`{ allowBareHands: boolean }`
-
-### 實作清單
-- [x] `runtimeFor()` 初始化 `state.equipments = []`
-- [x] `defaultSettings()` 新增 `equipAutoSwap`, `equipDurThreshold`, `heroEquipSettings`
-- [x] `config()` 兩個路徑均加入新設定
-- [x] `configFromForm()` 加入 `equipAutoSwap`, `equipDurThreshold`（`heroEquipSettings` 透過 `...previous` 保留）
-- [x] `loadSettings()` 最後呼叫 `renderEquipSettings(account.id)`
-- [x] `refreshAccount()` 新增 `GET /api/equipments` 呼叫 → `state.equipments`
-- [x] 新增 `checkAndSwapEquipments(c, accountId, huntResult)` 函式
-- [x] `hunt()` 各狩獵完成點呼叫 `await checkAndSwapEquipments(...)`
-- [x] 新增 `renderEquipSettings(accountId)` 渲染設定 UI（包含全域開關、門檻、每角色空手設定）
-- [x] `index.html` 新增 `<section id="equip-settings">` 於 forge-settings 之後
-
+## 功能五：鍛造坊收合按鈕樣式統一
+- [x] 各鍛造坊 header 的 `forge-toggle-btn`（▲）改為 `section-toggle` 樣式，文字顯示「收起／展開」
+- [x] 「全部展開／收合」按鈕同樣改為 `section-toggle` 樣式

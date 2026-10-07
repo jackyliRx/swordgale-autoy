@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.42";
+const uiVersion = "0.8.43";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -165,11 +165,11 @@ function partyDebug(party) {
 }
 function config(accountId = activeId) {
   const account = accounts.find((a) => a.id === accountId);
-  if (account?.settings) { const settings = { ...defaultSettings(), ...account.settings }; return { target: Number(settings.target), huntZone: settings.huntZone || "grassland", hp: Number(settings.hp), sp: Number(settings.sp), restHp: Number(settings.restHp), restSp: Number(settings.restSp), useItems: settings.useItems === true, teamItems: settings.teamItems || {}, heroItems: settings.heroItems || {}, restMinutes: Number(settings.restMinutes), alertMinutes: Number(settings.alertMinutes), flowMessages: settings.flowMessages !== false, operationLog: settings.operationLog === true, debug: settings.debug === true, itemRecoveryIncidentEnabled: settings.itemRecoveryIncidentEnabled === true, forgeDebugEnabled: settings.forgeDebugEnabled === true, autoCaptchaVerify: settings.autoCaptchaVerify === true, autoHcaptchaSolve: settings.autoHcaptchaSolve === true, humanLike: settings.humanLike === true, sleepStart: settings.sleepStart || "01:00", sleepEnd: settings.sleepEnd || "07:00", equipAutoSwap: settings.equipAutoSwap === true, equipDurThreshold: Number(settings.equipDurThreshold) || 100, heroEquipSettings: settings.heroEquipSettings || {} }; }
+  if (account?.settings) { const settings = { ...defaultSettings(), ...account.settings }; return { target: Number(settings.target), huntZone: settings.huntZone || "grassland", hp: Number(settings.hp), sp: Number(settings.sp), restHp: Number(settings.restHp), restSp: Number(settings.restSp), useItems: settings.useItems === true, teamItems: settings.teamItems || {}, heroItems: settings.heroItems || {}, restMinutes: Number(settings.restMinutes), alertMinutes: Number(settings.alertMinutes), flowMessages: settings.flowMessages !== false, operationLog: settings.operationLog === true, debug: settings.debug === true, itemRecoveryIncidentEnabled: settings.itemRecoveryIncidentEnabled === true, forgeDebugEnabled: settings.forgeDebugEnabled === true, autoCaptchaVerify: settings.autoCaptchaVerify === true, autoHcaptchaSolve: settings.autoHcaptchaSolve === true, humanLike: settings.humanLike === true, sleepStart: settings.sleepStart || "01:00", sleepEnd: settings.sleepEnd || "07:00", equipAutoSwap: settings.equipAutoSwap === true, equipDurThreshold: Number(settings.equipDurThreshold) || 100, equipPickPriority: settings.equipPickPriority || "dur_asc", forgeDefaultName: settings.forgeDefaultName || "", heroEquipSettings: settings.heroEquipSettings || {} }; }
   return { target: Number($("target-stage").value), huntZone: $("hunt-zone-select")?.value || "grassland", hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, teamItems: {}, heroItems: {}, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked, autoCaptchaVerify: $("auto-captcha-verify").checked };
 }
 function validConfig(c) { return Number.isInteger(c.target) && c.target > 0 && c.hp >= 1 && c.hp <= 100 && c.sp >= 1 && c.sp <= 100 && c.restHp >= c.hp && c.restHp <= 100 && c.restSp >= c.sp && c.restSp <= 100 && c.restMinutes > 0 && c.alertMinutes >= 1 && (c.huntZone !== "secret-path" || c.target >= 16) && (c.huntZone !== "bull-plains" || c.target >= 11); }
-function defaultSettings() { return { target: 1, huntZone: "grassland", hp: 80, sp: 70, restHp: 90, restSp: 90, useItems: false, teamItems: {}, heroItems: {}, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false, itemRecoveryIncidentEnabled: false, forgeDebugEnabled: false, forgeEnabled: false, forgeWorkshops: {}, autoCaptchaVerify: false, autoHcaptchaSolve: false, humanLike: false, sleepStart: "01:00", sleepEnd: "07:00", equipAutoSwap: false, equipDurThreshold: 100, heroEquipSettings: {} }; }
+function defaultSettings() { return { target: 1, huntZone: "grassland", hp: 80, sp: 70, restHp: 90, restSp: 90, useItems: false, teamItems: {}, heroItems: {}, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false, itemRecoveryIncidentEnabled: false, forgeDebugEnabled: false, forgeEnabled: false, forgeWorkshops: {}, forgeDefaultName: "", autoCaptchaVerify: false, autoHcaptchaSolve: false, humanLike: false, sleepStart: "01:00", sleepEnd: "07:00", equipAutoSwap: false, equipDurThreshold: 100, equipPickPriority: "dur_asc", heroEquipSettings: {} }; }
 function loadSettings(account = active()) {
   if (!account) return;
   account.settings = { ...defaultSettings(), ...(account.settings || {}) };
@@ -202,7 +202,7 @@ function persistSettings() {
 }
 function configFromForm() {
   const previous = active()?.settings || defaultSettings();
-  return { ...previous, huntZone: $("hunt-zone-select")?.value || "grassland", target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked, autoCaptchaVerify: $("auto-captcha-verify").checked, autoHcaptchaSolve: $("auto-hcaptcha-solve").checked, humanLike: $("human-like").checked, sleepStart: $("sleep-start").value || "01:00", sleepEnd: $("sleep-end").value || "07:00", equipAutoSwap: $("equip-auto-swap")?.checked === true, equipDurThreshold: Number($("equip-dur-threshold")?.value) || 100 };
+  return { ...previous, huntZone: $("hunt-zone-select")?.value || "grassland", target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked, autoCaptchaVerify: $("auto-captcha-verify").checked, autoHcaptchaSolve: $("auto-hcaptcha-solve").checked, humanLike: $("human-like").checked, sleepStart: $("sleep-start").value || "01:00", sleepEnd: $("sleep-end").value || "07:00", equipAutoSwap: $("equip-auto-swap")?.checked === true, equipDurThreshold: Number($("equip-dur-threshold")?.value) || 100, equipPickPriority: $("equip-pick-priority")?.value || "dur_asc" };
 }
 function clearRecoveryTimers(accountId) {
   const state = runtimeFor(accountId);
@@ -453,6 +453,86 @@ async function refreshForgeData(accountId = activeId) {
   if (accountId === activeId) { renderHeroes(accountId); renderForgeSettings(); }
   return state;
 }
+function loadForgeRecipes() { try { return JSON.parse(localStorage.getItem("autoy.forgeRecipes.v1") || "[]"); } catch { return []; } }
+function saveForgeRecipes(recipes) { try { localStorage.setItem("autoy.forgeRecipes.v1", JSON.stringify(recipes)); } catch {} }
+function renderForgeRecipeDialog(accountId = activeId) {
+  const state = runtimeFor(accountId);
+  const recipes = loadForgeRecipes();
+  const typeOptions = state.forgeTypes.map((t) => `<option value="${safe(t.id)}">${safe(t.name)}</option>`).join("");
+  const MINE_ORDER = ["土石", "木材", "金屬", "狩獵", "其他"];
+  const availableMines = state.forgeMines.filter((mine) => Number(mine.available) > 0);
+  const mineGroups = {};
+  for (const mine of availableMines) { const cat = mineCategory(Number(mine.id)); (mineGroups[cat] = mineGroups[cat] || []).push(mine); }
+  const groupedMineOptions = MINE_ORDER.filter((cat) => mineGroups[cat]).map((cat) => `<optgroup label="${cat}">${mineGroups[cat].map((mine) => `<option value="${safe(mine.id)}">${safe(mine.name)}（${Number(mine.available)}）</option>`).join("")}</optgroup>`).join("");
+  const recoveryOpts = [`<option value="">不使用 SP 補品</option>`].concat(recoveryItems(accountId).map((item) => `<option value="${safe(item.id)}">${safe(itemLabel(item))}</option>`)).join("");
+  const recipeRows = recipes.length ? recipes.map((r, idx) => {
+    const minesText = (r.selectedMines || []).map((e) => { const m = state.forgeMines.find((m) => String(m.id) === String(e.itemId)); return `${safe(m?.name || e.itemId)} ×${e.quantity}`; }).join("、") || "（無材料）";
+    return `<div class="recipe-row"><div class="recipe-row-info"><strong>${safe(r.label)}</strong><span class="hint">${safe(r.name || "（無裝備名稱）")} | ${safe(r.type || "（無類型）")} | ${minesText}</span></div><button type="button" class="recipe-delete-btn" data-recipe-idx="${idx}">刪除</button></div>`;
+  }).join("") : `<p class="hint">尚無配方。</p>`;
+  let dlg = $("forge-recipe-dialog");
+  if (!dlg) { dlg = document.createElement("dialog"); dlg.id = "forge-recipe-dialog"; document.body.appendChild(dlg); }
+  dlg.innerHTML = `<div class="dialog-heading"><h2>裝備配方庫</h2><div class="actions"><button data-close-dialog>關閉</button></div></div>
+<p class="hint">配方庫跨帳號共用，儲存於本機。套用配方會覆蓋鍛造坊的名稱、類型、材料與補品設定。</p>
+<div class="recipe-list">${recipeRows}</div>
+<details class="recipe-add-section"><summary>新增配方</summary>
+<div class="recipe-add-form">
+<label>配方名稱（用於識別）<input id="recipe-new-label" maxlength="40" placeholder="例：鋼鐵劍配方" /></label>
+<label>裝備名稱（選填；套用後覆蓋裝備名稱欄）<input id="recipe-new-name" maxlength="40" /></label>
+<label>裝備類型<select id="recipe-new-type"><option value="">（不指定）</option>${typeOptions}</select></label>
+<div class="recipe-material-add"><label>材料<select id="recipe-new-material">${groupedMineOptions}</select></label><label>數量<input id="recipe-new-qty" type="number" min="1" value="1" /></label><button type="button" id="recipe-add-material">加入</button></div>
+<ul id="recipe-new-mines"><li class="hint">尚未選擇材料。</li></ul>
+<label>完成後 SP 補品<select id="recipe-new-recovery">${recoveryOpts}</select></label>
+<button type="button" id="recipe-save-btn" class="primary">儲存配方</button>
+</div></details>
+<details class="recipe-io-section"><summary>匯出 / 匯入</summary>
+<div class="recipe-io-body">
+<button type="button" id="recipe-export-btn">複製 JSON</button>
+<label style="margin-top:12px">貼上 JSON 匯入<textarea id="recipe-import-text" rows="5" placeholder='貼上配方 JSON 陣列…'></textarea></label>
+<div class="actions" style="margin-top:8px"><button type="button" id="recipe-import-merge">合併匯入</button><button type="button" id="recipe-import-overwrite" class="danger">覆蓋匯入</button></div>
+<p id="recipe-import-msg" class="hint" style="margin-top:6px"></p>
+</div></details>`;
+  dlg.querySelectorAll("[data-close-dialog]").forEach((btn) => { btn.onclick = () => dlg.close(); });
+  const newMines = [];
+  dlg.querySelector("#recipe-add-material").onclick = () => {
+    const sel = dlg.querySelector("#recipe-new-material"); const qty = parseInt(dlg.querySelector("#recipe-new-qty").value);
+    if (!sel.value || !qty || qty < 1) return;
+    const existing = newMines.find((e) => e.itemId === sel.value);
+    if (existing) existing.quantity += qty; else newMines.push({ itemId: sel.value, quantity: qty });
+    const ul = dlg.querySelector("#recipe-new-mines");
+    function refreshMineList() {
+      ul.innerHTML = newMines.length ? newMines.map((e, i) => { const m = state.forgeMines.find((m) => String(m.id) === String(e.itemId)); return `<li>${safe(m?.name || e.itemId)} ×${e.quantity} <button type="button" data-mine-idx="${i}">移除</button></li>`; }).join("") : `<li class="hint">尚未選擇材料。</li>`;
+      ul.querySelectorAll("[data-mine-idx]").forEach((b) => { b.onclick = () => { newMines.splice(parseInt(b.dataset.mineIdx), 1); refreshMineList(); }; });
+    }
+    refreshMineList();
+  };
+  dlg.querySelector("#recipe-save-btn").onclick = () => {
+    const label = dlg.querySelector("#recipe-new-label").value.trim();
+    if (!label) { alert("請輸入配方名稱"); return; }
+    const recipe = { id: String(Date.now()) + Math.random().toString(36).slice(2, 7), label, name: dlg.querySelector("#recipe-new-name").value.trim(), type: dlg.querySelector("#recipe-new-type").value, selectedMines: newMines.map((e) => ({ ...e })), recoveryItemId: dlg.querySelector("#recipe-new-recovery").value };
+    const all = loadForgeRecipes(); all.push(recipe); saveForgeRecipes(all);
+    renderForgeRecipeDialog(accountId);
+  };
+  dlg.querySelectorAll(".recipe-delete-btn").forEach((btn) => { btn.onclick = () => { if (!confirm("確定刪除這個配方？")) return; const all = loadForgeRecipes(); all.splice(parseInt(btn.dataset.recipeIdx), 1); saveForgeRecipes(all); renderForgeRecipeDialog(accountId); }; });
+  dlg.querySelector("#recipe-export-btn").onclick = () => { navigator.clipboard.writeText(JSON.stringify(loadForgeRecipes(), null, 2)).then(() => alert("已複製 JSON")).catch(() => alert("複製失敗，請手動複製")); };
+  dlg.querySelector("#recipe-import-merge").onclick = () => importRecipes(false);
+  dlg.querySelector("#recipe-import-overwrite").onclick = () => importRecipes(true);
+  function importRecipes(overwrite) {
+    const msg = dlg.querySelector("#recipe-import-msg");
+    try {
+      const parsed = JSON.parse(dlg.querySelector("#recipe-import-text").value.trim());
+      if (!Array.isArray(parsed)) throw new Error("最外層必須是陣列");
+      const valid = parsed.filter((r) => r && typeof r.label === "string" && r.label.trim());
+      if (!valid.length) throw new Error("找不到有效配方（需有 label 欄位）");
+      const incoming = valid.map((r) => ({ id: r.id || String(Date.now()) + Math.random().toString(36).slice(2, 7), label: String(r.label).trim(), name: String(r.name || ""), type: String(r.type || ""), selectedMines: Array.isArray(r.selectedMines) ? r.selectedMines.map((e) => ({ itemId: String(e.itemId), quantity: Number(e.quantity) || 1 })) : [], recoveryItemId: String(r.recoveryItemId || "") }));
+      const result = overwrite ? incoming : (() => { const existing = loadForgeRecipes(); const existingIds = new Set(existing.map((r) => r.id)); return [...existing, ...incoming.filter((r) => !existingIds.has(r.id))]; })();
+      saveForgeRecipes(result);
+      msg.textContent = `匯入成功，共 ${result.length} 筆配方。`;
+      dlg.querySelector("#recipe-import-text").value = "";
+      renderForgeRecipeDialog(accountId);
+    } catch (e) { msg.textContent = `匯入失敗：${e.message}`; }
+  }
+  if (!dlg.open) dlg.showModal();
+}
 function forgeDraftForWorkshop(accountId, workshop) {
   const account = accounts.find((entry) => entry.id === accountId);
   const saved = account?.settings?.forgeWorkshops?.[String(workshop)] || {};
@@ -464,8 +544,8 @@ function saveForgeDraft(accountId, draft) {
   account.settings = { ...defaultSettings(), ...(account.settings || {}), forgeWorkshops: { ...(account.settings?.forgeWorkshops || {}), [String(draft.workshop)]: { enabled: draft.enabled === true, heroId: String(draft.heroId || ""), name: String(draft.name || "").trim(), type: String(draft.type || ""), selectedMines: (draft.selectedMines || []).map((entry) => ({ itemId: entry.itemId, quantity: Number(entry.quantity) })), recoveryItemId: String(draft.recoveryItemId || "") } } };
   save();
 }
-function hasConfiguredForgeWorkshop(workshops) {
-  return Object.values(workshops || {}).some((draft) => draft?.enabled === true && Boolean(String(draft.heroId || "")) && Boolean(String(draft.name || "").trim()) && Boolean(String(draft.type || "")) && Array.isArray(draft.selectedMines) && draft.selectedMines.length > 0);
+function hasConfiguredForgeWorkshop(workshops, forgeDefaultName = "") {
+  return Object.values(workshops || {}).some((draft) => draft?.enabled === true && Boolean(String(draft.heroId || "")) && Boolean(String(draft.name || forgeDefaultName || "").trim()) && Boolean(String(draft.type || "")) && Array.isArray(draft.selectedMines) && draft.selectedMines.length > 0);
 }
 function renderForgeSettings(accountId = activeId) {
   const panel = $("forge-settings");
@@ -474,11 +554,13 @@ function renderForgeSettings(accountId = activeId) {
   const state = runtimeFor(accountId);
   if (!account) return;
   if (!state.forgeDataUpdatedAt) {
-    panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">按「重新讀取」以載入鍛造坊資料。</p></div><div class="forge-heading-actions"><button type="button" id="forge-start" class="primary" disabled>啟動鍛造</button><button type="button" class="section-toggle">收起</button></div></div>`;
+    panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">請先按上方「重新讀取」以載入鍛造坊資料。</p></div><div class="forge-heading-actions"><button type="button" id="forge-start" class="primary" disabled title="請先按「重新讀取」">啟動鍛造</button><button type="button" class="section-toggle" data-section-toggle>收起</button></div></div>`;
     applySectionToggle(panel);
     return;
   }
   const workshops = forgeWorkshopsFromProfile(state.forgeProfile);
+  const forgeDefaultNameVal = (account.settings?.forgeDefaultName || "").trim();
+  const recipes = loadForgeRecipes();
   const eligibleHeroes = forgeEligibleHeroes(state.heroes);
   const activeForges = new Map();
   for (const hero of state.heroes || []) { const as = Number(hero.actionState); if (as === 5 && hero.actionTarget != null) activeForges.set(Number(hero.actionTarget), hero); }
@@ -500,13 +582,15 @@ function renderForgeSettings(accountId = activeId) {
     const typeOptions = state.forgeTypes.map((t) => `<option value="${safe(t.id)}" ${draft.type === t.id ? "selected" : ""}>${safe(t.name)}（材料上限 ${Number(t.limit)}）</option>`).join("");
     const recoveryOpts = [`<option value="">不使用 SP 補品</option>`].concat(recoveryItems(accountId).map((item) => `<option value="${safe(item.id)}" ${String(draft.recoveryItemId) === String(item.id) ? "selected" : ""}>${safe(itemLabel(item))}</option>`)).join("");
     const copyOpts = [`<option value="">從其他鍛造坊複製設定</option>`].concat(workshops.filter((ow) => ow !== w).map((ow) => `<option value="${ow}">鍛造坊 ${ow}</option>`)).join("");
+    const recipeOpts = [`<option value="">套用配方</option>`].concat(recipes.map((r) => `<option value="${safe(r.id)}">${safe(r.label)}</option>`)).join("");
     const selectedList = (draft.selectedMines || []).map((entry, idx) => { const mine = state.forgeMines.find((m) => String(m.id) === String(entry.itemId)); return `<li>${safe(mine?.name || "已失效材料")} × ${Number(entry.quantity)} <button type="button" data-forge-remove="${w}-${idx}">移除</button></li>`; }).join("") || "<li>尚未選擇材料。</li>";
     const statusText = active ? `▶ ${safe(active.name)} 鍛造中${active.actionCompleteTime ? `，預計完成 ${new Date(active.actionCompleteTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}` : "";
     const collapsed = !forgeExpanded(accountId).has(w);
-    return `<div class="forge-workshop-card${collapsed ? " collapsed" : ""}" data-w="${w}"><div class="forge-workshop-header"><label class="forge-workshop-header-label"><input type="checkbox" data-forge-job-enabled="${w}" ${draft.enabled ? "checked" : ""} /><strong>鍛造坊 ${w}</strong>${workshopError ? ` <span class="forge-workshop-error">⚠ ${safe(workshopError)}</span>` : ""}</label>${statusText ? `<span class="forge-workshop-status">${statusText}</span>` : ""}<button type="button" data-forge-toggle="${w}" class="forge-toggle-btn" aria-label="展開或收合">▲</button></div><div class="forge-workshop-settings"><label class="forge-copy-row">從其他鍛造坊複製<select data-forge-copy="${w}">${copyOpts}</select></label><label>選擇角色<select data-forge-hero="${w}">${heroOptions}</select></label><label>裝備名稱<input data-forge-name="${w}" maxlength="40" value="${safe(draft.name)}" /></label><label>裝備類型<select data-forge-type="${w}">${typeOptions}</select></label><label>完成後 SP 補品<select data-forge-recovery="${w}">${recoveryOpts}</select></label><div class="forge-material-section"><strong>選擇材料</strong><p class="hint" style="margin:2px 0 6px">找不到材料？未分類的新材料會出現在下拉選單的「其他」群組。</p><div class="forge-material-add"><label>材料<select data-forge-material="${w}">${groupedMineOptions}</select></label><label>數量<input data-forge-qty="${w}" type="number" min="1" value="1" /></label><button type="button" data-forge-add="${w}">加入</button></div><ul>${selectedList}</ul></div></div></div>`;
+    const nameHint = !draft.name && forgeDefaultNameVal ? `<p class="hint" style="margin:2px 0 0;font-size:.8rem">↳ 使用全域名稱：「${safe(forgeDefaultNameVal)}」</p>` : "";
+    return `<div class="forge-workshop-card${collapsed ? " collapsed" : ""}" data-w="${w}"><div class="forge-workshop-header"><label class="forge-workshop-header-label"><input type="checkbox" data-forge-job-enabled="${w}" ${draft.enabled ? "checked" : ""} /><strong>鍛造坊 ${w}</strong>${workshopError ? ` <span class="forge-workshop-error">⚠ ${safe(workshopError)}</span>` : ""}</label>${statusText ? `<span class="forge-workshop-status">${statusText}</span>` : ""}<button type="button" data-forge-toggle="${w}" class="section-toggle">${collapsed ? "展開" : "收起"}</button></div><div class="forge-workshop-settings"><label class="forge-copy-row">套用配方<select data-forge-apply-recipe="${w}">${recipeOpts}</select></label><label class="forge-copy-row">從其他鍛造坊複製<select data-forge-copy="${w}">${copyOpts}</select></label><label>選擇角色<select data-forge-hero="${w}">${heroOptions}</select></label><label>裝備名稱<input data-forge-name="${w}" maxlength="40" value="${safe(draft.name)}" placeholder="${safe(forgeDefaultNameVal) || "（未設定全域名稱）"}" />${nameHint}</label><label>裝備類型<select data-forge-type="${w}">${typeOptions}</select></label><label>完成後 SP 補品<select data-forge-recovery="${w}">${recoveryOpts}</select></label><div class="forge-material-section"><strong>選擇材料</strong><p class="hint" style="margin:2px 0 6px">找不到材料？未分類的新材料會出現在下拉選單的「其他」群組。</p><div class="forge-material-add"><label>材料<select data-forge-material="${w}">${groupedMineOptions}</select></label><label>數量<input data-forge-qty="${w}" type="number" min="1" value="1" /></label><button type="button" data-forge-add="${w}">加入</button></div><ul>${selectedList}</ul></div></div></div>`;
   }).join("");
   const allExpanded = workshops.every((w) => forgeExpanded(accountId).has(w));
-  panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">${state.forgeRunning ? "自動鍛造執行中；不影響自動狩獵。" : "啟動前請先按上方「重新讀取」以取得最新鍛造坊狀態，再按「啟動鍛造」。"}</p></div><div class="forge-heading-actions"><button type="button" id="forge-toggle-all">${allExpanded ? "全部收合" : "全部展開"}</button>${state.forgeRunning ? `<button type="button" id="forge-stop" class="danger">停止鍛造</button>` : `<button type="button" id="forge-start" class="primary">啟動鍛造</button>`}<button type="button" class="section-toggle">收起</button></div></div>${workshopCards}<p class="hint">更新時間：${safe(new Date(state.forgeDataUpdatedAt).toLocaleTimeString())}。每次開始與完成前都會重新讀取並驗證；不確定寫入結果時只重讀、不重送。</p>`;
+  panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">${state.forgeRunning ? "自動鍛造執行中；不影響自動狩獵。" : "啟動前請先按上方「重新讀取」以取得最新鍛造坊狀態，再按「啟動鍛造」。"}</p></div><div class="forge-heading-actions"><button type="button" id="forge-toggle-all" class="section-toggle">${allExpanded ? "全部收合" : "全部展開"}</button><button type="button" id="forge-recipe-btn" class="section-toggle">配方庫</button>${state.forgeRunning ? `<button type="button" id="forge-stop" class="danger">停止鍛造</button>` : `<button type="button" id="forge-start" class="primary">啟動鍛造</button>`}<button type="button" class="section-toggle" data-section-toggle>收起</button></div></div><div class="forge-global-name-row"><label>全域裝備名稱（各鍛造坊名稱空白時套用）<input id="forge-default-name" data-forge-default-name maxlength="40" value="${safe(forgeDefaultNameVal)}" placeholder="留空則各鍛造坊必須各自填寫" /></label></div>${workshopCards}<p class="hint">更新時間：${safe(new Date(state.forgeDataUpdatedAt).toLocaleTimeString())}。每次開始與完成前都會重新讀取並驗證；不確定寫入結果時只重讀、不重送。</p>`;
   applySectionToggle(panel);
   if ($("forge-start")) $("forge-start").onclick = () => setForgeEnabled(accountId, true);
   if ($("forge-stop")) $("forge-stop").onclick = () => setForgeEnabled(accountId, false);
@@ -516,8 +600,21 @@ function renderForgeSettings(accountId = activeId) {
     if (allExp) workshops.forEach((w) => expanded.delete(w)); else workshops.forEach((w) => expanded.add(w));
     renderForgeSettings(accountId);
   };
+  $("forge-recipe-btn").onclick = () => renderForgeRecipeDialog(accountId);
   panel.onchange = (e) => {
     const t = e.target;
+    if (t.dataset.forgeApplyRecipe !== undefined) {
+      const w = parseInt(t.dataset.forgeApplyRecipe);
+      if (!w || !t.value) return;
+      const recipe = loadForgeRecipes().find((r) => r.id === t.value);
+      if (!recipe) return;
+      const draft = forgeDraftForWorkshop(accountId, w);
+      Object.assign(draft, { name: recipe.name || "", type: recipe.type || draft.type, selectedMines: (recipe.selectedMines || []).map((e) => ({ ...e })), recoveryItemId: recipe.recoveryItemId || "" });
+      saveForgeDraft(accountId, draft);
+      t.value = "";
+      renderForgeSettings(accountId);
+      return;
+    }
     const w = parseInt(t.dataset.forgeJobEnabled ?? t.dataset.forgeHero ?? t.dataset.forgeType ?? t.dataset.forgeRecovery ?? t.dataset.forgeCopy ?? "");
     if (!w) return;
     const draft = forgeDraftForWorkshop(accountId, w);
@@ -536,10 +633,16 @@ function renderForgeSettings(accountId = activeId) {
     }
   };
   panel.oninput = (e) => {
-    const w = parseInt(e.target.dataset.forgeName ?? "");
+    const t = e.target;
+    if (t.dataset.forgeDefaultName !== undefined) {
+      const acc = accounts.find((entry) => entry.id === accountId);
+      if (acc) { acc.settings = { ...defaultSettings(), ...(acc.settings || {}), forgeDefaultName: t.value.trim() }; save(); }
+      return;
+    }
+    const w = parseInt(t.dataset.forgeName ?? "");
     if (!w) return;
     const draft = forgeDraftForWorkshop(accountId, w);
-    draft.name = e.target.value;
+    draft.name = t.value;
     saveForgeDraft(accountId, draft);
   };
   panel.onclick = (e) => {
@@ -596,7 +699,7 @@ function stopForgeRunner(accountId, reason = "已停止") {
 function setForgeEnabled(accountId, enabled) {
   const account = accounts.find((entry) => entry.id === accountId);
   if (!account) return;
-  if (enabled && !hasConfiguredForgeWorkshop(account.settings?.forgeWorkshops)) {
+  if (enabled && !hasConfiguredForgeWorkshop(account.settings?.forgeWorkshops, account.settings?.forgeDefaultName)) {
     warn("請先完成並勾選至少一個鍛造坊排程，再啟動鍛造", accountId);
     if (accountId === activeId) renderForgeSettings(accountId);
     return;
@@ -808,7 +911,8 @@ async function forgeTurn(accountId) {
         if (occupiedWorkshops.has(Number(workshop))) { recordForgeDebug(accountId, "forge.start.skipped", { workshop: Number(workshop), reason: "鍛造坊已有進行中的鍛造" }); continue; }
         const draft = drafts[workshop];
         if (!draft?.enabled) continue;
-        const validated = validateForgeDraft(draft, { workshops, heroes: state.heroes, mines: state.forgeMines, types: state.forgeTypes });
+        const effectiveDraft = { ...draft, name: draft.name || config(accountId).forgeDefaultName };
+        const validated = validateForgeDraft(effectiveDraft, { workshops, heroes: state.heroes, mines: state.forgeMines, types: state.forgeTypes });
         if (validated.ok) { forgeWorkshopErrors.delete(`${accountId}:${workshop}`); candidate = { workshop, draft, validated }; break; }
         forgeWorkshopErrors.set(`${accountId}:${workshop}`, validated.error);
         saveForgeDraft(accountId, { ...draft, enabled: false });
@@ -978,7 +1082,7 @@ function getSectionCollapsed(id) { try { return JSON.parse(localStorage.getItem(
 function setSectionCollapsed(id, val) { try { const m = JSON.parse(localStorage.getItem(sectionCollapseKey) || "{}"); if (val) m[id] = true; else delete m[id]; localStorage.setItem(sectionCollapseKey, JSON.stringify(m)); } catch {} }
 function applySectionToggle(panel) {
   const id = panel.id;
-  const btn = panel.querySelector(".section-toggle");
+  const btn = panel.querySelector("[data-section-toggle]") || panel.querySelector(".section-toggle");
   if (!btn || !id) return;
   const collapsed = getSectionCollapsed(id);
   panel.classList.toggle("section-collapsed", collapsed);
@@ -996,7 +1100,7 @@ function renderItemSettings(accountId = activeId) {
   const inventoryHint = hasItems ? `${recoveryItems(accountId).length} 種可用恢復補品；上次讀取 ${new Date(state.itemsUpdatedAt).toLocaleTimeString()}` : "尚未讀取背包";
   const team = settings.teamItems || {};
   const heroes = (state.heroes || []).filter((hero) => hero.selected === true);
-  panel.innerHTML = `<div class="item-settings-heading"><div><h3>補品設定</h3><p class="hint">${safe(inventoryHint)}。能力增益、裝備、礦物與材料不會出現在選單。</p></div><button type="button" class="section-toggle">收起</button></div>
+  panel.innerHTML = `<div class="item-settings-heading"><div><h3>補品設定</h3><p class="hint">${safe(inventoryHint)}。能力增益、裝備、礦物與材料不會出現在選單。</p></div><button type="button" class="section-toggle" data-section-toggle>收起</button></div>
     <label class="checkbox-setting item-enable"><input id="use-items" type="checkbox" ${settings.useItems === true ? "checked" : ""} /> 使用補品；未勾選時維持休息流程</label>
     <div class="item-grid"><div><strong>全隊預設</strong><label>HP 補品${itemSelect("team.hp", team.hp, accountId)}</label><label>SP 補品${itemSelect("team.sp", team.sp, accountId)}</label><label>雙恢復補品${itemSelect("team.both", team.both, accountId)}</label></div>
     <div class="item-hero-settings"><strong>出戰角色指定（未指定或用完時改用全隊預設）</strong>${heroes.length ? heroes.map((hero) => { const own = settings.heroItems?.[String(hero.id)] || {}; return `<div class="item-hero-row"><span>${safe(hero.name)}</span><label>HP${itemSelect(`hero.${hero.id}.hp`, own.hp, accountId)}</label><label>SP${itemSelect(`hero.${hero.id}.sp`, own.sp, accountId)}</label><label>雙恢復${itemSelect(`hero.${hero.id}.both`, own.both, accountId)}</label></div>`; }).join("") : "<p class=\"hint\">目前沒有勾選出戰角色。</p>"}</div></div>`;
@@ -1806,7 +1910,11 @@ async function checkAndSwapEquipments(c, accountId, huntResult) {
         }
         if (!picked) {
           const candidates = list.filter((e) => (anyType || e.type === type) && e.state === 0 && e.equipped == null && e.color !== "red" && e.dur >= c.equipDurThreshold);
-          candidates.sort((a, b) => a.dur - b.dur);
+          const priority = c.equipPickPriority || "dur_asc";
+          if (priority === "atk_desc") candidates.sort((a, b) => ((b.atk || 0) + (b.plus?.atk || 0)) - ((a.atk || 0) + (a.plus?.atk || 0)));
+          else if (priority === "def_desc") candidates.sort((a, b) => ((b.def || 0) + (b.plus?.def || 0)) - ((a.def || 0) + (a.plus?.def || 0)));
+          else if (priority === "dur_desc") candidates.sort((a, b) => b.dur - a.dur);
+          else candidates.sort((a, b) => a.dur - b.dur);
           picked = candidates[0] || null;
         }
         return picked;
@@ -1870,7 +1978,7 @@ function renderEquipSettings(accountId = activeId) {
           if (!item) return `<div class="equip-queue-row"><span class="equip-q-num">${idx + 1}</span><span class="equip-q-name equip-item-missing">ID ${id}（已不存在）</span><button type="button" class="equip-q-remove" data-hero="${heroIdStr}" data-item-id="${id}">×</button></div>`;
           return `<div class="equip-queue-row"><span class="equip-q-num">${idx + 1}</span><span class="equip-q-name">${safe(item.name)}</span><span class="equip-q-type">${safe(item.type)}</span><span class="equip-q-dur${item.dur < threshold ? " equip-dur-low" : ""}">${item.dur}/${item.fullDur}</span><button type="button" class="equip-q-remove" data-hero="${heroIdStr}" data-item-id="${id}">×</button></div>`;
         }).join("")
-      : `<p class="hint" style="margin:4px 0">佇列為空，自動選耐久最低的替換品</p>`;
+      : `<p class="hint" style="margin:4px 0">佇列為空，自動選${pickPriorityHintMap[pickPriority] || "耐久最低"}的替換品</p>`;
     const available = equipments.filter((e) => e.state === 0 && e.equipped == null && !queue.includes(e.id) && (weaponType === "" || e.type === weaponType));
     const typeMap = {};
     for (const e of available) { if (!typeMap[e.type]) typeMap[e.type] = []; typeMap[e.type].push(e); }
@@ -1898,9 +2006,11 @@ function renderEquipSettings(accountId = activeId) {
   }
 
   const heroSections = heroes.length ? heroes.map(heroCard).join("") : `<p class="hint">目前沒有勾選出戰角色。</p>`;
-  panel.innerHTML = `<div class="item-settings-heading"><div><h3>裝備自動換裝</h3><p class="hint">狩獵後偵測耐久低於門檻或裝備損毀，自動換上同類型替換品（跳過紅色保存裝備）。</p><p class="hint">不想換裝：全部停用請取消勾選「啟用裝備自動換裝」；只停用特定英雄請取消該英雄的「啟用」。</p></div><button type="button" class="section-toggle">收起</button></div>
+  const pickPriority = settings.equipPickPriority || "dur_asc";
+  const pickPriorityHintMap = { dur_asc: "耐久最低", atk_desc: "攻擊最高", def_desc: "防禦最高", dur_desc: "耐久最高" };
+  panel.innerHTML = `<div class="item-settings-heading"><div><h3>裝備自動換裝</h3><p class="hint">狩獵後偵測耐久低於門檻或裝備損毀，自動換上同類型替換品（跳過紅色保存裝備）。</p><p class="hint">不想換裝：全部停用請取消勾選「啟用裝備自動換裝」；只停用特定英雄請取消該英雄的「啟用」。</p></div><button type="button" class="section-toggle" data-section-toggle>收起</button></div>
     <label class="checkbox-setting item-enable"><input id="equip-auto-swap" type="checkbox" /> 啟用裝備自動換裝</label>
-    <div class="settings" id="equip-settings-body" style="${enabled ? "" : "opacity:0.5;pointer-events:none"}"><label>換裝耐久門檻（低於此值換裝；替換品耐久須高於此值）<input id="equip-dur-threshold" type="number" min="0" value="${threshold}" /></label></div>
+    <div class="settings" id="equip-settings-body" style="${enabled ? "" : "opacity:0.5;pointer-events:none"}"><label>換裝耐久門檻（低於此值換裝；替換品耐久須高於此值）<input id="equip-dur-threshold" type="number" min="0" value="${threshold}" /></label><label>佇列空時替換品挑選方式<select id="equip-pick-priority"><option value="dur_asc"${pickPriority === "dur_asc" ? " selected" : ""}>耐久最低</option><option value="atk_desc"${pickPriority === "atk_desc" ? " selected" : ""}>攻擊最高（atk + 加成）</option><option value="def_desc"${pickPriority === "def_desc" ? " selected" : ""}>防禦最高（def + 加成）</option><option value="dur_desc"${pickPriority === "dur_desc" ? " selected" : ""}>耐久最高</option></select></label></div>
     <div class="item-hero-settings">${heroSections}</div>`;
   applySectionToggle(panel);
   $("equip-auto-swap").checked = enabled;
@@ -1910,6 +2020,7 @@ function renderEquipSettings(accountId = activeId) {
     if (body) body.style.cssText = $("equip-auto-swap").checked ? "" : "opacity:0.5;pointer-events:none";
   };
   $("equip-dur-threshold").onchange = () => persistSettings();
+  $("equip-pick-priority").onchange = () => persistSettings();
 
   function updateHeroEquipSetting(heroId, patch) {
     account.settings = { ...defaultSettings(), ...(account.settings || {}) };
