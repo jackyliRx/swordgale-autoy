@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.49";
+const uiVersion = "0.8.50";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -433,7 +433,7 @@ async function refreshForgeData(accountId = activeId) {
   const state = runtimeFor(accountId);
   recordForgeDebug(accountId, "forge-data.refresh.started");
   const types = loadStoredForgeTypes();
-  const heroesPayloadPromise = state.refreshPromise ? state.refreshPromise.then(() => ({ heroes: state.heroes })) : request("/heroes", {}, accountId);
+  const heroesPayloadPromise = request("/heroes", {}, accountId);
   const itemsPayloadPromise = refreshItems(accountId).then(() => state.itemsPayload);
   const [profile, heroesPayload, itemsPayload] = await Promise.all([
     request("/profile", {}, accountId),
