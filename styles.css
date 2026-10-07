@@ -21,7 +21,8 @@ label { display:grid; gap:5px; font-size:.86rem; } .account { display:flex; just
 .forge-workshop-card.collapsed .forge-toggle-btn { transform:rotate(180deg); }
 .forge-workshop-card.collapsed .forge-workshop-settings { display:none; }
 .forge-workshop-status { flex:1; font-size:.9rem; color:#9dccff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
-.forge-workshop-settings { display:grid; gap:9px; }
+.forge-workshop-settings { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+@media (max-width:560px) { .forge-workshop-settings { grid-template-columns:1fr; } }
 .forge-workshop-settings > label select,.forge-workshop-settings > label input { width:100%; min-width:0; background:#0f151c; color:inherit; border:1px solid #526273; border-radius:6px; padding:8px; font-size:1rem; }
 .forge-copy-row select { max-width:280px; }
 .equip-hero-card { border:1px solid #344250; border-radius:8px; padding:12px; margin:10px 0; background:#151d26; }
@@ -58,6 +59,10 @@ label { display:grid; gap:5px; font-size:.86rem; } .account { display:flex; just
 .forge-material-add label select,.forge-material-add label input { width:100%; min-width:0; background:#0f151c; color:inherit; border:1px solid #526273; border-radius:6px; padding:8px; font-size:1rem; }
 .forge-material-section ul { margin:0; padding-left:18px; font-size:.95rem; }
 .forge-material-section li { margin:4px 0; }
+.item-settings-heading h3 { font-size:.95rem; margin:0; }
+.equip-global-settings { display:flex !important; flex-wrap:wrap; gap:12px; align-items:end; }
+.equip-global-settings > label { flex:1; min-width:200px; max-width:420px; }
+.equip-global-settings > label select,.equip-global-settings > label input[type="number"] { width:100%; background:#0f151c; color:inherit; border:1px solid #526273; border-radius:6px; padding:8px; font:inherit; font-size:.9rem; box-sizing:border-box; }
 .forge-global-name-row { margin:10px 0; padding:10px 12px; background:#151d26; border:1px solid #344250; border-radius:8px; }
 .forge-global-name-row label { display:grid; gap:5px; font-size:.86rem; } .forge-global-name-row input { width:100%; max-width:400px; background:#0f151c; color:inherit; border:1px solid #526273; border-radius:6px; padding:8px; font-size:.95rem; }
 .recipe-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px solid #2b3845; } .recipe-row:last-child { border-bottom:0; } .recipe-row-info { display:grid; gap:3px; min-width:0; } .recipe-row-info strong { font-size:.95rem; } .recipe-row-info .hint { font-size:.8rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

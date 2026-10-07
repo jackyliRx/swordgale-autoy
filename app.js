@@ -554,7 +554,7 @@ function renderForgeSettings(accountId = activeId) {
   const state = runtimeFor(accountId);
   if (!account) return;
   if (!state.forgeDataUpdatedAt) {
-    panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">請先按上方「重新讀取」以載入鍛造坊資料。</p></div><div class="forge-heading-actions"><button type="button" id="forge-start" class="primary" disabled title="請先按「重新讀取」">啟動鍛造</button><button type="button" class="section-toggle" data-section-toggle>收起</button></div></div>`;
+    panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">請先按上方「重新讀取」以載入鍛造坊資料。</p></div><div class="forge-heading-actions"><div style="display:flex;gap:8px"><button type="button" id="forge-start" class="primary" disabled style="opacity:.4;cursor:not-allowed">啟動鍛造</button></div><span style="font-size:.76rem;color:#b8c5d1">請先按「重新讀取」</span><button type="button" class="section-toggle" data-section-toggle>收起</button></div></div>`;
     applySectionToggle(panel);
     return;
   }
@@ -590,7 +590,7 @@ function renderForgeSettings(accountId = activeId) {
     return `<div class="forge-workshop-card${collapsed ? " collapsed" : ""}" data-w="${w}"><div class="forge-workshop-header"><label class="forge-workshop-header-label"><input type="checkbox" data-forge-job-enabled="${w}" ${draft.enabled ? "checked" : ""} /><strong>鍛造坊 ${w}</strong>${workshopError ? ` <span class="forge-workshop-error">⚠ ${safe(workshopError)}</span>` : ""}</label>${statusText ? `<span class="forge-workshop-status">${statusText}</span>` : ""}<button type="button" data-forge-toggle="${w}" class="section-toggle">${collapsed ? "展開" : "收起"}</button></div><div class="forge-workshop-settings"><label class="forge-copy-row">套用配方<select data-forge-apply-recipe="${w}">${recipeOpts}</select></label><label class="forge-copy-row">從其他鍛造坊複製<select data-forge-copy="${w}">${copyOpts}</select></label><label>選擇角色<select data-forge-hero="${w}">${heroOptions}</select></label><label>裝備名稱<input data-forge-name="${w}" maxlength="40" value="${safe(draft.name)}" placeholder="${safe(forgeDefaultNameVal) || "（未設定全域名稱）"}" />${nameHint}</label><label>裝備類型<select data-forge-type="${w}">${typeOptions}</select></label><label>完成後 SP 補品<select data-forge-recovery="${w}">${recoveryOpts}</select></label><div class="forge-material-section"><strong>選擇材料</strong><p class="hint" style="margin:2px 0 6px">找不到材料？未分類的新材料會出現在下拉選單的「其他」群組。</p><div class="forge-material-add"><label>材料<select data-forge-material="${w}">${groupedMineOptions}</select></label><label>數量<input data-forge-qty="${w}" type="number" min="1" value="1" /></label><button type="button" data-forge-add="${w}">加入</button></div><ul>${selectedList}</ul></div></div></div>`;
   }).join("");
   const allExpanded = workshops.every((w) => forgeExpanded(accountId).has(w));
-  panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">${state.forgeRunning ? "自動鍛造執行中；不影響自動狩獵。" : "啟動前請先按上方「重新讀取」以取得最新鍛造坊狀態，再按「啟動鍛造」。"}</p></div><div class="forge-heading-actions"><button type="button" id="forge-toggle-all" class="section-toggle">${allExpanded ? "全部收合" : "全部展開"}</button><button type="button" id="forge-recipe-btn" class="section-toggle">配方庫</button>${state.forgeRunning ? `<button type="button" id="forge-stop" class="danger">停止鍛造</button>` : `<button type="button" id="forge-start" class="primary">啟動鍛造</button>`}<button type="button" class="section-toggle" data-section-toggle>收起</button></div></div><div class="forge-global-name-row"><label>全域裝備名稱（各鍛造坊名稱空白時套用）<input id="forge-default-name" data-forge-default-name maxlength="40" value="${safe(forgeDefaultNameVal)}" placeholder="留空則各鍛造坊必須各自填寫" /></label></div>${workshopCards}<p class="hint">更新時間：${safe(new Date(state.forgeDataUpdatedAt).toLocaleTimeString())}。每次開始與完成前都會重新讀取並驗證；不確定寫入結果時只重讀、不重送。</p>`;
+  panel.innerHTML = `<div class="item-settings-heading"><div><h3>自動鍛造</h3><p class="hint">${state.forgeRunning ? "自動鍛造執行中；不影響自動狩獵。" : "啟動前請先按上方「重新讀取」以取得最新鍛造坊狀態，再按「啟動鍛造」。"}</p><button type="button" id="forge-toggle-all" class="section-toggle" style="margin-top:6px">${allExpanded ? "全部收合" : "全部展開"}</button></div><div class="forge-heading-actions"><div style="display:flex;gap:8px"><button type="button" id="forge-recipe-btn">配方庫</button>${state.forgeRunning ? `<button type="button" id="forge-stop" class="danger">停止鍛造</button>` : `<button type="button" id="forge-start" class="primary">啟動鍛造</button>`}</div><button type="button" class="section-toggle" data-section-toggle>收起</button></div></div><div class="forge-global-name-row"><label>全域裝備名稱（各鍛造坊名稱空白時套用）<input id="forge-default-name" data-forge-default-name maxlength="40" value="${safe(forgeDefaultNameVal)}" placeholder="留空則各鍛造坊必須各自填寫" /></label></div>${workshopCards}<p class="hint">更新時間：${safe(new Date(state.forgeDataUpdatedAt).toLocaleTimeString())}。每次開始與完成前都會重新讀取並驗證；不確定寫入結果時只重讀、不重送。</p>`;
   applySectionToggle(panel);
   if ($("forge-start")) $("forge-start").onclick = () => setForgeEnabled(accountId, true);
   if ($("forge-stop")) $("forge-stop").onclick = () => setForgeEnabled(accountId, false);
@@ -1965,7 +1965,7 @@ function renderEquipSettings(accountId = activeId) {
   const heroSettings = settings.heroEquipSettings || {};
   const allTypes = [...new Set(equipments.map((e) => e.type).filter(Boolean))].sort();
   const pickPriority = settings.equipPickPriority || "dur_asc";
-  const pickPriorityHintMap = { dur_asc: "耐久最低", atk_desc: "攻擊最高", def_desc: "防禦最高", dur_desc: "耐久最高" };
+  const pickPriorityHintMap = { dur_asc: "耐久最低優先", atk_desc: "攻擊最高優先", def_desc: "防禦最高優先", dur_desc: "耐久最高優先" };
 
   function heroCard(hero) {
     const heroIdStr = String(hero.id);
@@ -1980,7 +1980,7 @@ function renderEquipSettings(accountId = activeId) {
           if (!item) return `<div class="equip-queue-row"><span class="equip-q-num">${idx + 1}</span><span class="equip-q-name equip-item-missing">ID ${id}（已不存在）</span><button type="button" class="equip-q-remove" data-hero="${heroIdStr}" data-item-id="${id}">×</button></div>`;
           return `<div class="equip-queue-row"><span class="equip-q-num">${idx + 1}</span><span class="equip-q-name">${safe(item.name)}</span><span class="equip-q-type">${safe(item.type)}</span><span class="equip-q-dur${item.dur < threshold ? " equip-dur-low" : ""}">${item.dur}/${item.fullDur}</span><button type="button" class="equip-q-remove" data-hero="${heroIdStr}" data-item-id="${id}">×</button></div>`;
         }).join("")
-      : `<p class="hint" style="margin:4px 0">佇列為空，自動選${pickPriorityHintMap[pickPriority] || "耐久最低"}的替換品</p>`;
+      : `<p class="hint" style="margin:4px 0">佇列為空，依「<strong>${pickPriorityHintMap[pickPriority] || "耐久最低優先"}</strong>」自動選擇</p>`;
     const available = equipments.filter((e) => e.state === 0 && e.equipped == null && !queue.includes(e.id) && (weaponType === "" || e.type === weaponType));
     const typeMap = {};
     for (const e of available) { if (!typeMap[e.type]) typeMap[e.type] = []; typeMap[e.type].push(e); }
@@ -2010,7 +2010,8 @@ function renderEquipSettings(accountId = activeId) {
   const heroSections = heroes.length ? heroes.map(heroCard).join("") : `<p class="hint">目前沒有勾選出戰角色。</p>`;
   panel.innerHTML = `<div class="item-settings-heading"><div><h3>裝備自動換裝</h3><p class="hint">狩獵後偵測耐久低於門檻或裝備損毀，自動換上同類型替換品（跳過紅色保存裝備）。</p><p class="hint">不想換裝：全部停用請取消勾選「啟用裝備自動換裝」；只停用特定英雄請取消該英雄的「啟用」。</p></div><button type="button" class="section-toggle" data-section-toggle>收起</button></div>
     <label class="checkbox-setting item-enable"><input id="equip-auto-swap" type="checkbox" /> 啟用裝備自動換裝</label>
-    <div class="settings" id="equip-settings-body" style="${enabled ? "" : "opacity:0.5;pointer-events:none"}"><label>換裝耐久門檻（低於此值換裝；替換品耐久須高於此值）<input id="equip-dur-threshold" type="number" min="0" value="${threshold}" /></label><label>佇列空時替換品挑選方式<select id="equip-pick-priority"><option value="dur_asc"${pickPriority === "dur_asc" ? " selected" : ""}>耐久最低</option><option value="atk_desc"${pickPriority === "atk_desc" ? " selected" : ""}>攻擊最高（atk + 加成）</option><option value="def_desc"${pickPriority === "def_desc" ? " selected" : ""}>防禦最高（def + 加成）</option><option value="dur_desc"${pickPriority === "dur_desc" ? " selected" : ""}>耐久最高</option></select></label></div>
+    <div class="settings equip-global-settings" id="equip-settings-body" style="${enabled ? "" : "opacity:0.5;pointer-events:none"}"><label>換裝耐久門檻（低於此值換裝；替換品耐久須高於此值）<input id="equip-dur-threshold" type="number" min="0" value="${threshold}" /></label><label>替換品挑選方式（佇列為空時）<select id="equip-pick-priority"><option value="dur_asc"${pickPriority === "dur_asc" ? " selected" : ""}>耐久最低優先（預設）</option><option value="atk_desc"${pickPriority === "atk_desc" ? " selected" : ""}>攻擊最高優先（atk + 加成）</option><option value="def_desc"${pickPriority === "def_desc" ? " selected" : ""}>防禦最高優先（def + 加成）</option><option value="dur_desc"${pickPriority === "dur_desc" ? " selected" : ""}>耐久最高優先</option></select></label></div>
+    <p class="hint" style="margin-bottom:12px">有設定換裝佇列時依佇列順序優先；佇列為空才依此方式挑選。</p>
     <div class="item-hero-settings">${heroSections}</div>`;
   applySectionToggle(panel);
   $("equip-auto-swap").checked = enabled;
