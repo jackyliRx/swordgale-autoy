@@ -464,24 +464,21 @@ function renderForgeRecipeDialog(accountId = activeId) {
   const mineGroups = {};
   for (const mine of availableMines) { const cat = mineCategory(Number(mine.id)); (mineGroups[cat] = mineGroups[cat] || []).push(mine); }
   const groupedMineOptions = MINE_ORDER.filter((cat) => mineGroups[cat]).map((cat) => `<optgroup label="${cat}">${mineGroups[cat].map((mine) => `<option value="${safe(mine.id)}">${safe(mine.name)}（${Number(mine.available)}）</option>`).join("")}</optgroup>`).join("");
-  const recoveryOpts = [`<option value="">不使用 SP 補品</option>`].concat(recoveryItems(accountId).map((item) => `<option value="${safe(item.id)}">${safe(itemLabel(item))}</option>`)).join("");
   const recipeRows = recipes.length ? recipes.map((r, idx) => {
     const minesText = (r.selectedMines || []).map((e) => { const m = state.forgeMines.find((m) => String(m.id) === String(e.itemId)); return `${safe(m?.name || e.itemId)} ×${e.quantity}`; }).join("、") || "（無材料）";
-    return `<div class="recipe-row"><div class="recipe-row-info"><strong>${safe(r.label)}</strong><span class="hint">${safe(r.name || "（無裝備名稱）")} | ${safe(r.type || "（無類型）")} | ${minesText}</span></div><button type="button" class="recipe-delete-btn" data-recipe-idx="${idx}">刪除</button></div>`;
+    return `<div class="recipe-row"><div class="recipe-row-info"><strong>${safe(r.label)}</strong><span class="hint">${safe(r.type || "（無類型）")} | ${minesText}</span></div><button type="button" class="recipe-delete-btn" data-recipe-idx="${idx}">刪除</button></div>`;
   }).join("") : `<p class="hint">尚無配方。</p>`;
   let dlg = $("forge-recipe-dialog");
   if (!dlg) { dlg = document.createElement("dialog"); dlg.id = "forge-recipe-dialog"; document.body.appendChild(dlg); }
   dlg.innerHTML = `<div class="dialog-heading"><h2>裝備配方庫</h2><div class="actions"><button data-close-dialog>關閉</button></div></div>
-<p class="hint">配方庫跨帳號共用，儲存於本機。套用配方會覆蓋鍛造坊的名稱、類型、材料與補品設定。</p>
+<p class="hint">配方庫跨帳號共用，儲存於本機。套用配方會覆蓋鍛造坊的裝備類型與材料。</p>
 <div class="recipe-list">${recipeRows}</div>
 <details class="recipe-add-section"><summary>新增配方</summary>
 <div class="recipe-add-form">
 <label>配方名稱（用於識別）<input id="recipe-new-label" maxlength="40" placeholder="例：鋼鐵劍配方" /></label>
-<label>裝備名稱（選填；套用後覆蓋裝備名稱欄）<input id="recipe-new-name" maxlength="40" /></label>
 <label>裝備類型<select id="recipe-new-type"><option value="">（不指定）</option>${typeOptions}</select></label>
 <div class="recipe-material-add"><label>材料<select id="recipe-new-material">${groupedMineOptions}</select></label><label>數量<input id="recipe-new-qty" type="number" min="1" value="1" /></label><button type="button" id="recipe-add-material">加入</button></div>
 <ul id="recipe-new-mines"><li class="hint">尚未選擇材料。</li></ul>
-<label>完成後 SP 補品<select id="recipe-new-recovery">${recoveryOpts}</select></label>
 <button type="button" id="recipe-save-btn" class="primary">儲存配方</button>
 </div></details>
 <details class="recipe-io-section"><summary>匯出 / 匯入</summary>
@@ -508,7 +505,7 @@ function renderForgeRecipeDialog(accountId = activeId) {
   dlg.querySelector("#recipe-save-btn").onclick = () => {
     const label = dlg.querySelector("#recipe-new-label").value.trim();
     if (!label) { alert("請輸入配方名稱"); return; }
-    const recipe = { id: String(Date.now()) + Math.random().toString(36).slice(2, 7), label, name: dlg.querySelector("#recipe-new-name").value.trim(), type: dlg.querySelector("#recipe-new-type").value, selectedMines: newMines.map((e) => ({ ...e })), recoveryItemId: dlg.querySelector("#recipe-new-recovery").value };
+    const recipe = { id: String(Date.now()) + Math.random().toString(36).slice(2, 7), label, type: dlg.querySelector("#recipe-new-type").value, selectedMines: newMines.map((e) => ({ ...e })) };
     const all = loadForgeRecipes(); all.push(recipe); saveForgeRecipes(all);
     renderForgeRecipeDialog(accountId);
   };
@@ -523,7 +520,7 @@ function renderForgeRecipeDialog(accountId = activeId) {
       if (!Array.isArray(parsed)) throw new Error("最外層必須是陣列");
       const valid = parsed.filter((r) => r && typeof r.label === "string" && r.label.trim());
       if (!valid.length) throw new Error("找不到有效配方（需有 label 欄位）");
-      const incoming = valid.map((r) => ({ id: r.id || String(Date.now()) + Math.random().toString(36).slice(2, 7), label: String(r.label).trim(), name: String(r.name || ""), type: String(r.type || ""), selectedMines: Array.isArray(r.selectedMines) ? r.selectedMines.map((e) => ({ itemId: String(e.itemId), quantity: Number(e.quantity) || 1 })) : [], recoveryItemId: String(r.recoveryItemId || "") }));
+      const incoming = valid.map((r) => ({ id: r.id || String(Date.now()) + Math.random().toString(36).slice(2, 7), label: String(r.label).trim(), type: String(r.type || ""), selectedMines: Array.isArray(r.selectedMines) ? r.selectedMines.map((e) => ({ itemId: String(e.itemId), quantity: Number(e.quantity) || 1 })) : [] }));
       const result = overwrite ? incoming : (() => { const existing = loadForgeRecipes(); const existingIds = new Set(existing.map((r) => r.id)); return [...existing, ...incoming.filter((r) => !existingIds.has(r.id))]; })();
       saveForgeRecipes(result);
       msg.textContent = `匯入成功，共 ${result.length} 筆配方。`;
@@ -609,7 +606,7 @@ function renderForgeSettings(accountId = activeId) {
       const recipe = loadForgeRecipes().find((r) => r.id === t.value);
       if (!recipe) return;
       const draft = forgeDraftForWorkshop(accountId, w);
-      Object.assign(draft, { name: recipe.name || "", type: recipe.type || draft.type, selectedMines: (recipe.selectedMines || []).map((e) => ({ ...e })), recoveryItemId: recipe.recoveryItemId || "" });
+      Object.assign(draft, { type: recipe.type || draft.type, selectedMines: (recipe.selectedMines || []).map((e) => ({ ...e })) });
       saveForgeDraft(accountId, draft);
       t.value = "";
       renderForgeSettings(accountId);
