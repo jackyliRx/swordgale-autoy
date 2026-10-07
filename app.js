@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.8.48";
+const uiVersion = "0.8.49";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -910,7 +910,7 @@ async function forgeTurn(accountId) {
         if (!draft?.enabled) continue;
         const effectiveDraft = { ...draft, name: draft.name || config(accountId).forgeDefaultName };
         const validated = validateForgeDraft(effectiveDraft, { workshops, heroes: state.heroes, mines: state.forgeMines, types: state.forgeTypes });
-        if (validated.ok) { forgeWorkshopErrors.delete(`${accountId}:${workshop}`); candidate = { workshop, draft, validated }; break; }
+        if (validated.ok) { forgeWorkshopErrors.delete(`${accountId}:${workshop}`); candidate = { workshop, draft: effectiveDraft, validated }; break; }
         forgeWorkshopErrors.set(`${accountId}:${workshop}`, validated.error);
         saveForgeDraft(accountId, { ...draft, enabled: false });
         recordForgeDebug(accountId, "forge.start.auto-disabled", { workshop: Number(workshop), heroId: String(draft.heroId || ""), reason: validated.error });
@@ -932,7 +932,20 @@ async function forgeTurn(accountId) {
         forgeWorkshopErrors.delete(`${accountId}:${workshop}`);
         log(`鍛造坊 ${workshop} 開始鍛造（${safe(validated.type.name)}，材料 ${validated.materialTotal} 件）`, accountId);
         forgeScheduleJitter(2000, fc, accountId);
-      } catch (error) { await refreshForgeAfterUncertainWrite(accountId, "forge.start.write", error, { workshop: Number(workshop), heroId: validated.hero.id }); if (state.forgeRunning) forgeSchedule(30000, accountId); }
+      } catch (error) {
+        if (error.statusCode === 400) {
+          const reason = error.responseBody?.message || "API 400";
+          forgeWorkshopErrors.set(`${accountId}:${workshop}`, reason);
+          saveForgeDraft(accountId, { ...drafts[workshop], enabled: false });
+          recordForgeDebug(accountId, "forge.start.auto-disabled", { workshop: Number(workshop), heroId: validated.hero.id, reason });
+          log(`鍛造坊 ${workshop} 已自動取消勾選：${reason}`, accountId);
+          if (accountId === activeId) renderForgeSettings(accountId);
+          if (state.forgeRunning) forgeScheduleJitter(1000, fc, accountId);
+        } else {
+          await refreshForgeAfterUncertainWrite(accountId, "forge.start.write", error, { workshop: Number(workshop), heroId: validated.hero.id });
+          if (state.forgeRunning) forgeSchedule(30000, accountId);
+        }
+      }
       return;
     }
     recordForgeDebug(accountId, "forge.idle", {});
