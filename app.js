@@ -168,7 +168,7 @@ function config(accountId = activeId) {
   if (account?.settings) { const settings = { ...defaultSettings(), ...account.settings }; return { target: Number(settings.target), huntZone: settings.huntZone || "grassland", hp: Number(settings.hp), sp: Number(settings.sp), restHp: Number(settings.restHp), restSp: Number(settings.restSp), useItems: settings.useItems === true, teamItems: settings.teamItems || {}, heroItems: settings.heroItems || {}, restMinutes: Number(settings.restMinutes), alertMinutes: Number(settings.alertMinutes), flowMessages: settings.flowMessages !== false, operationLog: settings.operationLog === true, debug: settings.debug === true, itemRecoveryIncidentEnabled: settings.itemRecoveryIncidentEnabled === true, forgeDebugEnabled: settings.forgeDebugEnabled === true, autoCaptchaVerify: settings.autoCaptchaVerify === true, autoHcaptchaSolve: settings.autoHcaptchaSolve === true, humanLike: settings.humanLike === true, sleepStart: settings.sleepStart || "01:00", sleepEnd: settings.sleepEnd || "07:00", equipAutoSwap: settings.equipAutoSwap === true, equipDurThreshold: Number(settings.equipDurThreshold) || 100, equipPickPriority: settings.equipPickPriority || "dur_asc", forgeDefaultName: settings.forgeDefaultName || "", heroEquipSettings: settings.heroEquipSettings || {} }; }
   return { target: Number($("target-stage").value), huntZone: $("hunt-zone-select")?.value || "grassland", hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, teamItems: {}, heroItems: {}, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked, autoCaptchaVerify: $("auto-captcha-verify").checked };
 }
-function validConfig(c) { return Number.isInteger(c.target) && c.target > 0 && c.hp >= 1 && c.hp <= 100 && c.sp >= 1 && c.sp <= 100 && c.restHp >= c.hp && c.restHp <= 100 && c.restSp >= c.sp && c.restSp <= 100 && c.restMinutes > 0 && c.alertMinutes >= 1 && (c.huntZone !== "secret-path" || c.target >= 16) && (c.huntZone !== "bull-plains" || c.target >= 11); }
+function validConfig(c) { return Number.isInteger(c.target) && c.target > 0 && c.hp >= 1 && c.hp <= 100 && c.sp >= 1 && c.sp <= 100 && c.restHp >= c.hp && c.restHp <= 100 && c.restSp >= c.sp && c.restSp <= 100 && c.restMinutes > 0 && c.alertMinutes >= 1 && (c.huntZone !== "secret-path" || c.target >= 16) && (c.huntZone !== "bull-plains" || c.target >= 11) && (c.huntZone !== "bat-cave-rock-cave" || c.target >= 14); }
 function defaultSettings() { return { target: 1, huntZone: "grassland", hp: 80, sp: 70, restHp: 90, restSp: 90, useItems: false, teamItems: {}, heroItems: {}, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false, itemRecoveryIncidentEnabled: false, forgeDebugEnabled: false, forgeEnabled: false, forgeWorkshops: {}, forgeDefaultName: "", autoCaptchaVerify: false, autoHcaptchaSolve: false, humanLike: false, sleepStart: "01:00", sleepEnd: "07:00", equipAutoSwap: false, equipDurThreshold: 100, equipPickPriority: "dur_asc", heroEquipSettings: {} }; }
 function loadSettings(account = active()) {
   if (!account) return;
@@ -1485,8 +1485,8 @@ function scheduleHuntMove(accountId, party, reason) {
   log(`${reason}；依伺服器完成時間等待約 ${Math.ceil(delay / 1000)} 秒後完成移動`, accountId);
   schedule(delay, accountId);
 }
-const HUNT_ZONE_NAMES = { 1: "大草原", 2: "黑暗山洞" };
-function huntTargetZoneId(huntZone) { return huntZone === "dark-cave" ? 2 : 1; }
+const HUNT_ZONE_NAMES = { 1: "大草原", 2: "黑暗山洞", 20001: "岩洞" };
+function huntTargetZoneId(huntZone) { return huntZone === "dark-cave" || huntZone === "bat-cave-rock-cave" ? 2 : 1; }
 async function beginHuntMoveToZone(accountId, zoneId) {
   const state = runtimeFor(accountId);
   const zoneName = HUNT_ZONE_NAMES[zoneId] || `地圖 ${zoneId}`;
@@ -1499,7 +1499,7 @@ async function beginHuntMoveToZone(accountId, zoneId) {
   log(`自動狩獵：已從城鎮開始前往${zoneName}`, accountId);
   scheduleHuntMove(accountId, party, `前往${zoneName}中`);
 }
-const FORK_ZONE_NAMES = { 10001: "猛牛原", 10002: "草原秘徑" };
+const FORK_ZONE_NAMES = { 10001: "猛牛原", 10002: "草原秘徑", 20001: "岩洞" };
 async function beginHuntEnterForkPath(accountId, forkZoneId) {
   const forkZoneName = FORK_ZONE_NAMES[forkZoneId] || `秘境 ${forkZoneId}`;
   const state = runtimeFor(accountId);
@@ -1544,7 +1544,6 @@ async function continueHuntMove(accountId, party) {
   const currentParty = selectedParty(accountId);
   if (currentParty.every((hero) => Number(hero.huntZone) === targetZoneId && Number(hero.huntStage) === 1 && Number(hero.actionState) === 0)) {
     state.huntMovePhase = null;
-    state.grasslandHuntedInSession = false;
     state.huntPaths = [];
     log(`自動狩獵：已抵達${zoneName}第 1 層，開始檢查狩獵條件`, accountId);
     schedule(1000, accountId);
@@ -2082,14 +2081,17 @@ async function hunt(c, accountId) {
   const atSecretPath = party.every((hero) => Number(hero.huntZone) === 10002);
   const atBullPlains = party.every((hero) => Number(hero.huntZone) === 10001);
   const atDarkCave = party.every((hero) => Number(hero.huntZone) === 2 && Number(hero.huntStage) >= 1);
+  const atRockCave = party.every((hero) => Number(hero.huntZone) === 20001 && Number(hero.huntStage) >= 1);
   const targetZone = c.huntZone || "grassland";
   const targetZoneId = huntTargetZoneId(targetZone);
   if (atTown) { await beginHuntMoveToZone(accountId, targetZoneId); return; }
-  if (atDarkCave && targetZone !== "dark-cave") { await beginHuntReturnToTown(accountId, targetZoneId); return; }
+  if (atDarkCave && targetZone !== "dark-cave" && targetZone !== "bat-cave-rock-cave") { await beginHuntReturnToTown(accountId, targetZoneId); return; }
   if (atGrassland && targetZone === "dark-cave") { await beginHuntReturnToTown(accountId, 2); return; }
+  if (atGrassland && targetZone === "bat-cave-rock-cave") { await beginHuntReturnToTown(accountId, 2); return; }
   if (atSecretPath && targetZone !== "secret-path") { await beginHuntReturnToTown(accountId, targetZoneId); return; }
   if (atBullPlains && targetZone !== "bull-plains") { await beginHuntReturnToTown(accountId, targetZoneId); return; }
-  if (!atGrassland && !atSecretPath && !atBullPlains && !atDarkCave) throw new Error("出戰隊伍不在已驗證的狩獵地圖或位置不一致；請重新讀取確認");
+  if (atRockCave && targetZone !== "bat-cave-rock-cave") { await beginHuntReturnToTown(accountId, targetZoneId); return; }
+  if (!atGrassland && !atSecretPath && !atBullPlains && !atDarkCave && !atRockCave) throw new Error("出戰隊伍不在已驗證的狩獵地圖或位置不一致；請重新讀取確認");
   if (atGrassland && (targetZone === "secret-path" || targetZone === "bull-plains")) {
     const forkZoneId = targetZone === "secret-path" ? 10002 : 10001;
     const forkZoneName = targetZone === "secret-path" ? "草原秘徑" : "猛牛原";
@@ -2097,14 +2099,15 @@ async function hunt(c, accountId) {
     if (forkPath) { await beginHuntEnterForkPath(accountId, forkZoneId); return; }
     const cooldownWaitMs = state.cooldownAt - Date.now();
     if (cooldownWaitMs > 0) { debug(accountId, "hunt.cooldown", { cooldownAt: new Date(state.cooldownAt).toISOString(), waitMs: cooldownWaitMs }); return schedule(cooldownWaitMs, accountId); }
-    const sessionHunted = state.grasslandHuntedInSession === true;
-    const useForward = state.canForward === true && sessionHunted;
-    log(`前往${forkZoneName}途中：大草原 ${Number(party[0]?.huntStage) || "?"} 層，canForward=${state.canForward}，本回合已狩獵=${sessionHunted}　→ ${useForward ? "前行" : "原地狩獵"}`, accountId);
-    debug(accountId, "hunt.start", { action: useForward ? "forward" : "stay", note: `前往${forkZoneName}途中`, canForward: state.canForward, sessionHunted, party: partyDebug(party) });
+    const forkFloor = targetZone === "secret-path" ? 16 : 11;
+    const currentFloor = Number(party[0]?.huntStage);
+    if (!Number.isInteger(currentFloor)) throw new Error("找不到出戰隊伍目前樓層");
+    const useForward = state.canForward === true && currentFloor < forkFloor;
+    log(`前往${forkZoneName}途中：大草原 ${currentFloor} 層，canForward=${state.canForward} → ${useForward ? "前行" : "原地狩獵"}`, accountId);
+    debug(accountId, "hunt.start", { action: useForward ? "forward" : "stay", note: `前往${forkZoneName}途中`, canForward: state.canForward, party: partyDebug(party) });
     const T_send = Date.now();
     const result = await request(useForward ? "/hunt?type=forward" : "/hunt", { method: "POST" }, accountId);
     const T_recv = Date.now();
-    state.grasslandHuntedInSession = true;
     const info = result.huntInfo || {};
     state.heroes = mergeHeroes(state.heroes, info.heroes || []);
     state.canForward = info.canForward ?? state.canForward;
@@ -2112,6 +2115,31 @@ async function hunt(c, accountId) {
     if (info.paths) state.huntPaths = info.paths;
     if (accountId === activeId) renderHeroes(accountId);
     log(`${useForward ? "前行" : "原地"}狩獵完成（前往${forkZoneName}途中）`, accountId);
+    await checkAndSwapEquipments(c, accountId, result);
+    scheduleHunt(T_send, T_recv, c, accountId);
+    return;
+  }
+  if (atDarkCave && targetZone === "bat-cave-rock-cave") {
+    const forkZoneId = 20001;
+    const forkPath = (state.huntPaths || []).find((p) => Number(p.zoneId) === forkZoneId);
+    if (forkPath) { await beginHuntEnterForkPath(accountId, forkZoneId); return; }
+    const cooldownWaitMs = state.cooldownAt - Date.now();
+    if (cooldownWaitMs > 0) { debug(accountId, "hunt.cooldown", { cooldownAt: new Date(state.cooldownAt).toISOString(), waitMs: cooldownWaitMs }); return schedule(cooldownWaitMs, accountId); }
+    const current = Number(party[0]?.huntStage);
+    if (!Number.isInteger(current)) throw new Error("找不到出戰隊伍目前樓層");
+    const useForward = state.canForward === true && current < 14;
+    log(`前往岩洞途中：黑暗山洞 ${current} 層，canForward=${state.canForward} → ${useForward ? "前行" : "原地狩獵"}`, accountId);
+    debug(accountId, "hunt.start", { action: useForward ? "forward" : "stay", note: "前往岩洞途中", canForward: state.canForward, party: partyDebug(party) });
+    const T_send = Date.now();
+    const result = await request(useForward ? "/hunt?type=forward" : "/hunt", { method: "POST" }, accountId);
+    const T_recv = Date.now();
+    const info = result.huntInfo || {};
+    state.heroes = mergeHeroes(state.heroes, info.heroes || []);
+    state.canForward = info.canForward ?? state.canForward;
+    state.cooldownAt = localCooldownAt(info.huntAvailableAt, state);
+    if (info.paths) state.huntPaths = info.paths;
+    if (accountId === activeId) renderHeroes(accountId);
+    log(`${useForward ? "前行" : "原地"}狩獵完成（前往岩洞途中）`, accountId);
     await checkAndSwapEquipments(c, accountId, result);
     scheduleHunt(T_send, T_recv, c, accountId);
     return;
@@ -2326,6 +2354,8 @@ function initAccountEvents() {
     if (stage25Warning) stage25Warning.hidden = !(zone === "secret-path" && stage >= 25);
     const bullPlainsWarning = $("hunt-zone-bull-plains-warning");
     if (bullPlainsWarning) bullPlainsWarning.hidden = !(zone === "bull-plains" && stage < 11);
+    const rockCaveWarning = $("hunt-zone-rock-cave-warning");
+    if (rockCaveWarning) rockCaveWarning.hidden = !(zone === "bat-cave-rock-cave" && stage < 14);
   }
   $("hunt-zone-select").addEventListener("change", () => {
     const val = $("hunt-zone-select").value;
@@ -2334,7 +2364,8 @@ function initAccountEvents() {
       const inSecretPath = party.every((h) => Number(h.huntZone) === 10002);
       const inBullPlains = party.every((h) => Number(h.huntZone) === 10001);
       const inDarkCave = party.every((h) => Number(h.huntZone) === 2);
-      const ZONE_LABELS = { grassland: "大草原", "secret-path": "草原秘徑", "bull-plains": "猛牛原", "dark-cave": "黑暗山洞" };
+      const inRockCave = party.every((h) => Number(h.huntZone) === 20001);
+      const ZONE_LABELS = { grassland: "大草原", "secret-path": "草原秘徑", "bull-plains": "猛牛原", "dark-cave": "黑暗山洞", "bat-cave-rock-cave": "蝙蝠洞→岩洞" };
       if (inSecretPath && val !== "secret-path") {
         if (!window.confirm(`目前在草原秘徑，切換為${ZONE_LABELS[val] || val}將自動回程至城鎮，確定嗎？`)) {
           $("hunt-zone-select").value = "secret-path";
@@ -2345,9 +2376,14 @@ function initAccountEvents() {
           $("hunt-zone-select").value = "bull-plains";
           return;
         }
-      } else if (inDarkCave && val !== "dark-cave") {
+      } else if (inDarkCave && val !== "dark-cave" && val !== "bat-cave-rock-cave") {
         if (!window.confirm(`目前在黑暗山洞，切換為${ZONE_LABELS[val] || val}將自動回程至城鎮，確定嗎？`)) {
           $("hunt-zone-select").value = "dark-cave";
+          return;
+        }
+      } else if (inRockCave && val !== "bat-cave-rock-cave") {
+        if (!window.confirm(`目前在岩洞，切換為${ZONE_LABELS[val] || val}將自動回程至城鎮，確定嗎？`)) {
+          $("hunt-zone-select").value = "bat-cave-rock-cave";
           return;
         }
       }
