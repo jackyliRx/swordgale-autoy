@@ -455,7 +455,7 @@ async function refreshForgeData(accountId = activeId) {
 }
 function loadForgeRecipes() { try { return JSON.parse(localStorage.getItem("autoy.forgeRecipes.v1") || "[]"); } catch { return []; } }
 function saveForgeRecipes(recipes) { try { localStorage.setItem("autoy.forgeRecipes.v1", JSON.stringify(recipes)); } catch {} }
-function renderForgeRecipeDialog(accountId = activeId) {
+function renderForgeRecipeDialog(accountId = activeId, editingIdx = -1) {
   const state = runtimeFor(accountId);
   const recipes = loadForgeRecipes();
   const typeOptions = state.forgeTypes.map((t) => `<option value="${safe(t.id)}">${safe(t.name)}（材料上限 ${Number(t.limit)}）</option>`).join("");
@@ -464,9 +464,14 @@ function renderForgeRecipeDialog(accountId = activeId) {
   const mineGroups = {};
   for (const mine of availableMines) { const cat = mineCategory(Number(mine.id)); (mineGroups[cat] = mineGroups[cat] || []).push(mine); }
   const groupedMineOptions = MINE_ORDER.filter((cat) => mineGroups[cat]).map((cat) => `<optgroup label="${cat}">${mineGroups[cat].map((mine) => `<option value="${safe(mine.id)}">${safe(mine.name)}（${Number(mine.available)}）</option>`).join("")}</optgroup>`).join("");
+  function minesDisplayText(selectedMines) { return (selectedMines || []).map((e) => { const m = state.forgeMines.find((m) => String(m.id) === String(e.itemId)); return `${safe(m?.name || e.name || String(e.itemId))} ×${e.quantity}`; }).join("、") || "（無材料）"; }
+  function editTypeOpts(currentType) { return `<option value="">（不指定）</option>` + state.forgeTypes.map((t) => `<option value="${safe(t.id)}" ${currentType === t.id ? "selected" : ""}>${safe(t.name)}（材料上限 ${Number(t.limit)}）</option>`).join(""); }
   const recipeRows = recipes.length ? recipes.map((r, idx) => {
-    const minesText = (r.selectedMines || []).map((e) => { const m = state.forgeMines.find((m) => String(m.id) === String(e.itemId)); return `${safe(m?.name || e.itemId)} ×${e.quantity}`; }).join("、") || "（無材料）";
-    return `<div class="recipe-row"><div class="recipe-row-info"><strong>${safe(r.label)}</strong><span class="hint">${safe(r.type || "（無類型）")} | ${minesText}</span></div><button type="button" class="recipe-delete-btn" data-recipe-idx="${idx}">刪除</button></div>`;
+    if (idx === editingIdx) {
+      const initMinesHtml = (r.selectedMines || []).map((e, i) => { const m = state.forgeMines.find((m) => String(m.id) === String(e.itemId)); return `<li>${safe(m?.name || e.name || String(e.itemId))} ×${e.quantity} <button type="button" data-edit-mine-idx="${i}">移除</button></li>`; }).join("") || `<li class="hint">尚未選擇材料。</li>`;
+      return `<div class="recipe-row recipe-editing"><div class="recipe-edit-form"><label>配方名稱<input id="recipe-edit-label" maxlength="40" value="${safe(r.label)}" /></label><label>裝備類型<select id="recipe-edit-type">${editTypeOpts(r.type)}</select></label><div class="recipe-material-add"><label>材料<select id="recipe-edit-material">${groupedMineOptions}</select></label><label>數量<input id="recipe-edit-qty" type="number" min="1" value="1" /></label><button type="button" id="recipe-edit-add-material">加入</button></div><ul id="recipe-edit-mines">${initMinesHtml}</ul><div class="actions" style="margin-top:8px"><button type="button" id="recipe-edit-save" class="primary">儲存</button><button type="button" id="recipe-edit-cancel">取消</button></div></div></div>`;
+    }
+    return `<div class="recipe-row"><div class="recipe-row-info"><strong>${safe(r.label)}</strong><span class="hint">${safe(r.type || "（無類型）")} | ${minesDisplayText(r.selectedMines)}</span></div><div class="recipe-row-actions"><button type="button" class="recipe-copy-btn" data-recipe-idx="${idx}">複製</button><button type="button" class="recipe-edit-btn" data-recipe-idx="${idx}">編輯</button><button type="button" class="recipe-delete-btn" data-recipe-idx="${idx}">刪除</button></div></div>`;
   }).join("") : `<p class="hint">尚無配方。</p>`;
   let dlg = $("forge-recipe-dialog");
   if (!dlg) { dlg = document.createElement("dialog"); dlg.id = "forge-recipe-dialog"; document.body.appendChild(dlg); }
@@ -489,14 +494,15 @@ function renderForgeRecipeDialog(accountId = activeId) {
 <p id="recipe-import-msg" class="hint" style="margin-top:6px"></p>
 </div></details>`;
   dlg.querySelectorAll("[data-close-dialog]").forEach((btn) => { btn.onclick = () => dlg.close(); });
+  // 新增配方
   const newMines = [];
   dlg.querySelector("#recipe-add-material").onclick = () => {
     const sel = dlg.querySelector("#recipe-new-material"); const qty = parseInt(dlg.querySelector("#recipe-new-qty").value);
     if (!sel.value || !qty || qty < 1) return;
     const existing = newMines.find((e) => e.itemId === sel.value);
     if (existing) existing.quantity += qty; else newMines.push({ itemId: sel.value, quantity: qty });
-    const ul = dlg.querySelector("#recipe-new-mines");
     function refreshMineList() {
+      const ul = dlg.querySelector("#recipe-new-mines");
       ul.innerHTML = newMines.length ? newMines.map((e, i) => { const m = state.forgeMines.find((m) => String(m.id) === String(e.itemId)); return `<li>${safe(m?.name || e.itemId)} ×${e.quantity} <button type="button" data-mine-idx="${i}">移除</button></li>`; }).join("") : `<li class="hint">尚未選擇材料。</li>`;
       ul.querySelectorAll("[data-mine-idx]").forEach((b) => { b.onclick = () => { newMines.splice(parseInt(b.dataset.mineIdx), 1); refreshMineList(); }; });
     }
@@ -505,11 +511,40 @@ function renderForgeRecipeDialog(accountId = activeId) {
   dlg.querySelector("#recipe-save-btn").onclick = () => {
     const label = dlg.querySelector("#recipe-new-label").value.trim();
     if (!label) { alert("請輸入配方名稱"); return; }
-    const recipe = { id: String(Date.now()) + Math.random().toString(36).slice(2, 7), label, type: dlg.querySelector("#recipe-new-type").value, selectedMines: newMines.map((e) => ({ ...e })) };
+    const recipe = { id: String(Date.now()) + Math.random().toString(36).slice(2, 7), label, type: dlg.querySelector("#recipe-new-type").value, selectedMines: newMines.map((e) => { const mine = state.forgeMines.find((m) => String(m.id) === String(e.itemId)); return { itemId: String(e.itemId), quantity: e.quantity, name: mine?.name || "" }; }) };
     const all = loadForgeRecipes(); all.push(recipe); saveForgeRecipes(all);
     renderForgeRecipeDialog(accountId);
   };
+  // 複製 / 編輯 / 刪除
+  dlg.querySelectorAll(".recipe-copy-btn").forEach((btn) => { btn.onclick = () => { const all = loadForgeRecipes(); const src = all[parseInt(btn.dataset.recipeIdx)]; if (!src) return; const copy = { ...src, id: String(Date.now()) + Math.random().toString(36).slice(2, 7), label: src.label + "（複製）", selectedMines: (src.selectedMines || []).map((e) => ({ ...e })) }; all.push(copy); saveForgeRecipes(all); renderForgeRecipeDialog(accountId); }; });
+  dlg.querySelectorAll(".recipe-edit-btn").forEach((btn) => { btn.onclick = () => renderForgeRecipeDialog(accountId, parseInt(btn.dataset.recipeIdx)); });
   dlg.querySelectorAll(".recipe-delete-btn").forEach((btn) => { btn.onclick = () => { if (!confirm("確定刪除這個配方？")) return; const all = loadForgeRecipes(); all.splice(parseInt(btn.dataset.recipeIdx), 1); saveForgeRecipes(all); renderForgeRecipeDialog(accountId); }; });
+  // 編輯表單
+  if (editingIdx >= 0 && editingIdx < recipes.length) {
+    const editMines = (recipes[editingIdx].selectedMines || []).map((e) => ({ ...e }));
+    function refreshEditMineList() {
+      const ul = dlg.querySelector("#recipe-edit-mines");
+      ul.innerHTML = editMines.length ? editMines.map((e, i) => { const m = state.forgeMines.find((m) => String(m.id) === String(e.itemId)); return `<li>${safe(m?.name || e.name || String(e.itemId))} ×${e.quantity} <button type="button" data-edit-mine-idx="${i}">移除</button></li>`; }).join("") : `<li class="hint">尚未選擇材料。</li>`;
+      ul.querySelectorAll("[data-edit-mine-idx]").forEach((b) => { b.onclick = () => { editMines.splice(parseInt(b.dataset.editMineIdx), 1); refreshEditMineList(); }; });
+    }
+    refreshEditMineList();
+    dlg.querySelector("#recipe-edit-add-material").onclick = () => {
+      const sel = dlg.querySelector("#recipe-edit-material"); const qty = parseInt(dlg.querySelector("#recipe-edit-qty").value);
+      if (!sel.value || !qty || qty < 1) return;
+      const existing = editMines.find((e) => e.itemId === sel.value);
+      if (existing) existing.quantity += qty; else editMines.push({ itemId: sel.value, quantity: qty });
+      refreshEditMineList();
+    };
+    dlg.querySelector("#recipe-edit-save").onclick = () => {
+      const label = dlg.querySelector("#recipe-edit-label").value.trim();
+      if (!label) { alert("請輸入配方名稱"); return; }
+      const all = loadForgeRecipes();
+      all[editingIdx] = { ...all[editingIdx], label, type: dlg.querySelector("#recipe-edit-type").value, selectedMines: editMines.map((e) => { const mine = state.forgeMines.find((m) => String(m.id) === String(e.itemId)); return { itemId: String(e.itemId), quantity: e.quantity, name: mine?.name || e.name || "" }; }) };
+      saveForgeRecipes(all);
+      renderForgeRecipeDialog(accountId);
+    };
+    dlg.querySelector("#recipe-edit-cancel").onclick = () => renderForgeRecipeDialog(accountId);
+  }
   dlg.querySelector("#recipe-export-btn").onclick = () => { navigator.clipboard.writeText(JSON.stringify(loadForgeRecipes(), null, 2)).then(() => alert("已複製 JSON")).catch(() => alert("複製失敗，請手動複製")); };
   dlg.querySelector("#recipe-import-merge").onclick = () => importRecipes(false);
   dlg.querySelector("#recipe-import-overwrite").onclick = () => importRecipes(true);
@@ -520,7 +555,7 @@ function renderForgeRecipeDialog(accountId = activeId) {
       if (!Array.isArray(parsed)) throw new Error("最外層必須是陣列");
       const valid = parsed.filter((r) => r && typeof r.label === "string" && r.label.trim());
       if (!valid.length) throw new Error("找不到有效配方（需有 label 欄位）");
-      const incoming = valid.map((r) => ({ id: r.id || String(Date.now()) + Math.random().toString(36).slice(2, 7), label: String(r.label).trim(), type: String(r.type || ""), selectedMines: Array.isArray(r.selectedMines) ? r.selectedMines.map((e) => ({ itemId: String(e.itemId), quantity: Number(e.quantity) || 1 })) : [] }));
+      const incoming = valid.map((r) => ({ id: r.id || String(Date.now()) + Math.random().toString(36).slice(2, 7), label: String(r.label).trim(), type: String(r.type || ""), selectedMines: Array.isArray(r.selectedMines) ? r.selectedMines.map((e) => ({ itemId: String(e.itemId), quantity: Number(e.quantity) || 1, ...(e.name ? { name: String(e.name) } : {}) })) : [] }));
       const result = overwrite ? incoming : (() => { const existing = loadForgeRecipes(); const existingIds = new Set(existing.map((r) => r.id)); return [...existing, ...incoming.filter((r) => !existingIds.has(r.id))]; })();
       saveForgeRecipes(result);
       msg.textContent = `匯入成功，共 ${result.length} 筆配方。`;
@@ -606,7 +641,8 @@ function renderForgeSettings(accountId = activeId) {
       const recipe = loadForgeRecipes().find((r) => r.id === t.value);
       if (!recipe) return;
       const draft = forgeDraftForWorkshop(accountId, w);
-      Object.assign(draft, { type: recipe.type || draft.type, selectedMines: (recipe.selectedMines || []).map((e) => ({ ...e })) });
+      const resolvedMines = (recipe.selectedMines || []).map((e) => { const byName = e.name ? state.forgeMines.find((m) => m.name === e.name) : null; const mine = byName || state.forgeMines.find((m) => String(m.id) === String(e.itemId)); return { itemId: String(mine?.id ?? e.itemId), quantity: e.quantity }; });
+      Object.assign(draft, { type: recipe.type || draft.type, selectedMines: resolvedMines });
       saveForgeDraft(accountId, draft);
       t.value = "";
       renderForgeSettings(accountId);
