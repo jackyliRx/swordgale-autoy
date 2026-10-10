@@ -1944,6 +1944,10 @@ async function checkAndSwapEquipments(c, accountId, huntResult) {
     }
     const queue = Array.isArray(heroEquipSetting.queue) ? heroEquipSetting.queue : [];
     for (const type of types) {
+      if (heroEquipSetting.dualWield !== true) {
+        const currentTypeCount = state.equipments.filter((e) => String(e.equipped) === heroIdStr && (type === null || e.type === type)).length;
+        if (currentTypeCount >= 1) { log(`換裝：英雄 ${heroIdStr} 已有 ${currentTypeCount} 件 ${type ?? "裝備"}，未啟用雙持，跳過補第二件`, accountId); continue; }
+      }
       const anyType = type === null;
       const typeLabel = anyType ? "（不限類型）" : type;
       function pickFromList(list) {
@@ -2017,6 +2021,7 @@ function renderEquipSettings(accountId = activeId) {
     const hs = heroSettings[heroIdStr] || {};
     const heroEnabled = hs.enabled !== false;
     const allowBareHands = hs.allowBareHands === true;
+    const dualWield = hs.dualWield === true;
     const weaponType = hs.weaponType || "";
     const queue = Array.isArray(hs.queue) ? hs.queue : [];
     const queueHtml = queue.length
@@ -2043,6 +2048,7 @@ function renderEquipSettings(accountId = activeId) {
         <strong class="equip-hero-name">${safe(hero.name)}</strong>
         <label class="checkbox-setting"><input type="checkbox" data-equip-hero-enabled="${heroIdStr}"${heroEnabled ? " checked" : ""}> 啟用</label>
         <label class="checkbox-setting"><input type="checkbox" data-equip-bare-hands="${heroIdStr}"${allowBareHands ? " checked" : ""}> 允許空手</label>
+        <label class="checkbox-setting"><input type="checkbox" data-equip-dual-wield="${heroIdStr}"${dualWield ? " checked" : ""}> 允許裝備兩把（雙持／武器＋盾）</label>
         <label class="equip-type-select-label" title="設定後，換裝觸發時若英雄缺少此類型裝備，會主動補裝">裝備種類<select data-equip-weapon-type="${heroIdStr}">${typeOptions}</select></label>
       </div>
       <div class="equip-hero-body${!heroEnabled ? " equip-section-disabled" : ""}">
@@ -2053,7 +2059,22 @@ function renderEquipSettings(accountId = activeId) {
   }
 
   const heroSections = heroes.length ? heroes.map(heroCard).join("") : `<p class="hint">目前沒有勾選出戰角色。</p>`;
-  panel.innerHTML = `<div class="item-settings-heading"><div><h3>裝備自動換裝</h3><p class="hint">狩獵後偵測耐久低於門檻或裝備損毀，自動換上同類型替換品（跳過紅色保存裝備）。</p><p class="hint">不想換裝：全部停用請取消勾選「啟用裝備自動換裝」；只停用特定英雄請取消該英雄的「啟用」。</p></div><button type="button" class="section-toggle" data-section-toggle>收起</button></div>
+  panel.innerHTML = `<div class="item-settings-heading"><div><h3>裝備自動換裝</h3><p class="hint">狩獵後偵測耐久低於門檻或裝備損毀，自動換上同類型替換品（跳過紅色保存裝備）。</p></div><button type="button" class="section-toggle" data-section-toggle>收起</button></div>
+    <details class="equip-rules-section"><summary class="hint" style="cursor:pointer;color:#9dccff">換裝規則說明</summary><div class="equip-rules-body hint">
+      <p><strong>觸發時機</strong>：每次狩獵結算後，系統檢查英雄穿著的裝備；符合以下任一條件則觸發換裝：</p>
+      <ul>
+        <li>裝備損毀（狩獵後自動消失）</li>
+        <li>裝備耐久低於「換裝耐久門檻」</li>
+        <li>設定了「裝備種類」但英雄目前未穿著該類型</li>
+      </ul>
+      <p><strong>替換規則</strong>：以「損毀／低耐久裝備的類型」為準，從背包尋找同類型替換品。例：劍壞掉找劍、盾壞掉找盾。</p>
+      <p><strong>雙持（允許裝備兩把）</strong>：預設每種類型最多裝備一件。勾選後，允許同一類型裝備兩件（適合雙持、武器＋盾組合）。</p>
+      <p><strong>換裝佇列</strong>：佇列中的裝備優先被選用（依序）。佇列為空時，依「替換品挑選方式」自動挑選。</p>
+      <p><strong>裝備種類篩選</strong>：設定後，觸發換裝時若英雄缺少該類型裝備，會主動補裝；可加入佇列的裝備也只顯示該類型。</p>
+      <p><strong>允許空手</strong>：找不到替換品時，預設停止自動狩獵。勾選後改為繼續狩獵（空手上陣）。</p>
+      <p><strong>🔒 紅色裝備</strong>：標記為保存用，永不自動消耗，只能手動裝備。</p>
+      <p><strong>停用換裝</strong>：取消勾選「啟用裝備自動換裝」可全部停用；只停用特定英雄請取消該英雄的「啟用」。</p>
+    </div></details>
     <label class="checkbox-setting item-enable"><input id="equip-auto-swap" type="checkbox" /> 啟用裝備自動換裝</label>
     <div class="settings equip-global-settings" id="equip-settings-body" style="${enabled ? "" : "opacity:0.5;pointer-events:none"}"><label>換裝耐久門檻（低於此值換裝；替換品耐久須高於此值）<input id="equip-dur-threshold" type="number" min="0" value="${threshold}" /></label><label>替換品挑選方式（佇列為空時）<select id="equip-pick-priority"><option value="dur_asc"${pickPriority === "dur_asc" ? " selected" : ""}>耐久最低優先（預設）</option><option value="atk_desc"${pickPriority === "atk_desc" ? " selected" : ""}>攻擊最高優先（atk + 加成）</option><option value="def_desc"${pickPriority === "def_desc" ? " selected" : ""}>防禦最高優先（def + 加成）</option><option value="dur_desc"${pickPriority === "dur_desc" ? " selected" : ""}>耐久最高優先</option></select></label></div>
     <p class="hint" style="margin-bottom:12px">有設定換裝佇列時依佇列順序優先；佇列為空才依此方式挑選。</p>
@@ -2080,6 +2101,9 @@ function renderEquipSettings(accountId = activeId) {
   });
   panel.querySelectorAll("[data-equip-bare-hands]").forEach((cb) => {
     cb.onchange = () => { updateHeroEquipSetting(cb.dataset.equipBareHands, { allowBareHands: cb.checked }); };
+  });
+  panel.querySelectorAll("[data-equip-dual-wield]").forEach((cb) => {
+    cb.onchange = () => { updateHeroEquipSetting(cb.dataset.equipDualWield, { dualWield: cb.checked }); };
   });
   panel.querySelectorAll("[data-equip-weapon-type]").forEach((sel) => {
     sel.onchange = () => { updateHeroEquipSetting(sel.dataset.equipWeaponType, { weaponType: sel.value }); renderEquipSettings(accountId); };
