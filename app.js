@@ -25,7 +25,7 @@ const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
   if (!runtimes.has(id)) {
     const account = accounts.find((entry) => entry.id === id);
-    runtimes.set(id, { heroes: [], equipments: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemsPayload: null, itemsRefreshPromise: null, forgeProfile: null, forgeTypes: [], forgeMines: [], forgeDraft: { workshop: 1, enabled: false, heroId: "", name: "", type: "", selectedMines: [], recoveryItemId: "" }, forgeDataUpdatedAt: 0, forgeRunning: false, forgeTimer: null, forgeWakeAt: 0, forgeBusy: false, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, stopReason: null, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, huntPaths: [], nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, writeQueue: Promise.resolve(), actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null, captchaSolveCount: 0, captchaThreshold: randomCaptchaThreshold(), captchaSolving: false, forgePausedForCaptcha: false, huntPausedForCaptcha: false });
+    runtimes.set(id, { heroes: [], equipments: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemsPayload: null, itemsRefreshPromise: null, forgeProfile: null, forgeTypes: [], forgeMines: [], forgeDraft: { workshop: 1, enabled: false, heroId: "", name: "", type: "", selectedMines: [], recoveryItemId: "" }, forgeDataUpdatedAt: 0, forgeRunning: false, forgeTimer: null, forgeWakeAt: 0, forgeBusy: false, forgeLastWait: false, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, stopReason: null, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, huntPaths: [], nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, writeQueue: Promise.resolve(), actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null, captchaSolveCount: 0, captchaThreshold: randomCaptchaThreshold(), captchaSolving: false, forgePausedForCaptcha: false, huntPausedForCaptcha: false, captchaRestCount: 0, captchaRestLastAt: 0 });
   }
   return runtimes.get(id);
 }
@@ -165,11 +165,11 @@ function partyDebug(party) {
 }
 function config(accountId = activeId) {
   const account = accounts.find((a) => a.id === accountId);
-  if (account?.settings) { const settings = { ...defaultSettings(), ...account.settings }; return { target: Number(settings.target), huntZone: settings.huntZone || "grassland", hp: Number(settings.hp), sp: Number(settings.sp), restHp: Number(settings.restHp), restSp: Number(settings.restSp), useItems: settings.useItems === true, teamItems: settings.teamItems || {}, heroItems: settings.heroItems || {}, restMinutes: Number(settings.restMinutes), alertMinutes: Number(settings.alertMinutes), flowMessages: settings.flowMessages !== false, operationLog: settings.operationLog === true, debug: settings.debug === true, itemRecoveryIncidentEnabled: settings.itemRecoveryIncidentEnabled === true, forgeDebugEnabled: settings.forgeDebugEnabled === true, autoCaptchaVerify: settings.autoCaptchaVerify === true, autoHcaptchaSolve: settings.autoHcaptchaSolve === true, humanLike: settings.humanLike === true, sleepStart: settings.sleepStart || "01:00", sleepEnd: settings.sleepEnd || "07:00", equipAutoSwap: settings.equipAutoSwap === true, equipDurThreshold: Number(settings.equipDurThreshold) || 100, equipPickPriority: settings.equipPickPriority || "dur_asc", forgeDefaultName: settings.forgeDefaultName || "", heroEquipSettings: settings.heroEquipSettings || {} }; }
+  if (account?.settings) { const settings = { ...defaultSettings(), ...account.settings }; return { target: Number(settings.target), huntZone: settings.huntZone || "grassland", hp: Number(settings.hp), sp: Number(settings.sp), restHp: Number(settings.restHp), restSp: Number(settings.restSp), useItems: settings.useItems === true, teamItems: settings.teamItems || {}, heroItems: settings.heroItems || {}, restMinutes: Number(settings.restMinutes), alertMinutes: Number(settings.alertMinutes), flowMessages: settings.flowMessages !== false, operationLog: settings.operationLog === true, debug: settings.debug === true, itemRecoveryIncidentEnabled: settings.itemRecoveryIncidentEnabled === true, forgeDebugEnabled: settings.forgeDebugEnabled === true, autoCaptchaVerify: settings.autoCaptchaVerify === true, autoHcaptchaSolve: settings.autoHcaptchaSolve === true, humanLike: settings.humanLike === true, sleepStart: settings.sleepStart || "01:00", sleepEnd: settings.sleepEnd || "07:00", captchaRestThreshold: Math.max(1, Number(settings.captchaRestThreshold) || 5), equipAutoSwap: settings.equipAutoSwap === true, equipDurThreshold: Number(settings.equipDurThreshold) || 100, equipPickPriority: settings.equipPickPriority || "dur_asc", forgeDefaultName: settings.forgeDefaultName || "", heroEquipSettings: settings.heroEquipSettings || {} }; }
   return { target: Number($("target-stage").value), huntZone: $("hunt-zone-select")?.value || "grassland", hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, teamItems: {}, heroItems: {}, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked, autoCaptchaVerify: $("auto-captcha-verify").checked };
 }
 function validConfig(c) { return Number.isInteger(c.target) && c.target > 0 && c.hp >= 1 && c.hp <= 100 && c.sp >= 1 && c.sp <= 100 && c.restHp >= c.hp && c.restHp <= 100 && c.restSp >= c.sp && c.restSp <= 100 && c.restMinutes > 0 && c.alertMinutes >= 1 && (c.huntZone !== "secret-path" || c.target >= 16) && (c.huntZone !== "bull-plains" || c.target >= 11) && (c.huntZone !== "bat-cave-rock-cave" || c.target >= 14); }
-function defaultSettings() { return { target: 1, huntZone: "grassland", hp: 80, sp: 70, restHp: 90, restSp: 90, useItems: false, teamItems: {}, heroItems: {}, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false, itemRecoveryIncidentEnabled: false, forgeDebugEnabled: false, forgeEnabled: false, forgeWorkshops: {}, forgeDefaultName: "", autoCaptchaVerify: false, autoHcaptchaSolve: false, humanLike: false, sleepStart: "01:00", sleepEnd: "07:00", equipAutoSwap: false, equipDurThreshold: 100, equipPickPriority: "dur_asc", heroEquipSettings: {} }; }
+function defaultSettings() { return { target: 1, huntZone: "grassland", hp: 80, sp: 70, restHp: 90, restSp: 90, useItems: false, teamItems: {}, heroItems: {}, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false, itemRecoveryIncidentEnabled: false, forgeDebugEnabled: false, forgeEnabled: false, forgeWorkshops: {}, forgeDefaultName: "", autoCaptchaVerify: false, autoHcaptchaSolve: false, humanLike: false, sleepStart: "01:00", sleepEnd: "07:00", captchaRestThreshold: 5, equipAutoSwap: false, equipDurThreshold: 100, equipPickPriority: "dur_asc", heroEquipSettings: {} }; }
 function loadSettings(account = active()) {
   if (!account) return;
   account.settings = { ...defaultSettings(), ...(account.settings || {}) };
@@ -191,6 +191,8 @@ function loadSettings(account = active()) {
   $("human-like").checked = account.settings.humanLike === true;
   $("sleep-start").value = account.settings.sleepStart || "01:00";
   $("sleep-end").value = account.settings.sleepEnd || "07:00";
+  if ($("captcha-rest-threshold")) $("captcha-rest-threshold").value = account.settings.captchaRestThreshold || 5;
+  updateCaptchaRestVisibility();
   renderItemSettings(account.id);
   renderEquipSettings(account.id);
 }
@@ -202,7 +204,7 @@ function persistSettings() {
 }
 function configFromForm() {
   const previous = active()?.settings || defaultSettings();
-  return { ...previous, huntZone: $("hunt-zone-select")?.value || "grassland", target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked, autoCaptchaVerify: $("auto-captcha-verify").checked, autoHcaptchaSolve: $("auto-hcaptcha-solve").checked, humanLike: $("human-like").checked, sleepStart: $("sleep-start").value || "01:00", sleepEnd: $("sleep-end").value || "07:00", equipAutoSwap: $("equip-auto-swap")?.checked === true, equipDurThreshold: Number($("equip-dur-threshold")?.value) || 100, equipPickPriority: $("equip-pick-priority")?.value || "dur_asc" };
+  return { ...previous, huntZone: $("hunt-zone-select")?.value || "grassland", target: Number($("target-stage").value), hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked, autoCaptchaVerify: $("auto-captcha-verify").checked, autoHcaptchaSolve: $("auto-hcaptcha-solve").checked, humanLike: $("human-like").checked, sleepStart: $("sleep-start").value || "01:00", sleepEnd: $("sleep-end").value || "07:00", captchaRestThreshold: Math.max(1, Number($("captcha-rest-threshold")?.value) || 5), equipAutoSwap: $("equip-auto-swap")?.checked === true, equipDurThreshold: Number($("equip-dur-threshold")?.value) || 100, equipPickPriority: $("equip-pick-priority")?.value || "dur_asc" };
 }
 function clearRecoveryTimers(accountId) {
   const state = runtimeFor(accountId);
@@ -384,7 +386,6 @@ function nextForgeAction({ workshops, heroes, drafts, skippedHeroIds = new Set()
   for (const hero of heroes || []) {
     const as = Number(hero.actionState);
     if (as === 5 && hero.canComplete === true && !skippedHeroIds.has(String(hero.id) + ":" + (hero.actionStart || ""))) {
-      if (enabledCompleteOnly && !(drafts?.[Number(hero.actionTarget)]?.enabled === true)) continue;
       return { kind: "complete", workshop: Number(hero.actionTarget), heroId: hero.id };
     }
   }
@@ -415,11 +416,21 @@ function loadForgeDebugLogs() {
   try { const value = JSON.parse(localStorage.getItem(forgeDebugLogKey) || "[]"); return Array.isArray(value) ? value.filter((entry) => entry && typeof entry === "object").slice(0, forgeDebugLogLimit) : []; }
   catch { return []; }
 }
-function saveForgeDebugLogs() { localStorage.setItem(forgeDebugLogKey, JSON.stringify(forgeDebugLogs.slice(0, forgeDebugLogLimit))); }
+let _forgeDebugSaveTimer = null;
+function saveForgeDebugLogs() {
+  clearTimeout(_forgeDebugSaveTimer);
+  _forgeDebugSaveTimer = setTimeout(() => {
+    localStorage.setItem(forgeDebugLogKey, JSON.stringify(forgeDebugLogs.slice(0, forgeDebugLogLimit)));
+  }, 800);
+}
 function shouldRecordForgeDebug(settings) { return settings?.forgeDebugEnabled === true; }
 function forgeSafeDetail(value) { return safeOperationPayload(value); }
 function recordForgeDebug(accountId, event, detail = {}) {
   if (!shouldRecordForgeDebug(config(accountId))) return;
+  if (event === "forge.wait") {
+    const last = forgeDebugLogs[0];
+    if (last && last.accountRef === String(accountId) && last.event === "forge.wait" && last.workshop === detail.workshop) return;
+  }
   forgeDebugLogs.unshift({ at: new Date().toISOString(), accountRef: String(accountId), event, ...forgeSafeDetail(detail) });
   forgeDebugLogs = forgeDebugLogs.slice(0, forgeDebugLogLimit);
   saveForgeDebugLogs();
@@ -429,7 +440,7 @@ function renderForgeDebugLogs() {
   const logs = forgeDebugLogs.filter((entry) => entry.accountRef === String(activeId));
   $("forge-debug-log-list").textContent = logs.length ? JSON.stringify(logs, null, 2) : "尚未記錄鍛造除錯資料。勾選後才會記錄新的鍛造流程。";
 }
-async function refreshForgeData(accountId = activeId) {
+async function refreshForgeData(accountId = activeId, { skipRender = false } = {}) {
   const state = runtimeFor(accountId);
   recordForgeDebug(accountId, "forge-data.refresh.started");
   const types = loadStoredForgeTypes();
@@ -450,7 +461,7 @@ async function refreshForgeData(accountId = activeId) {
   state.forgeDataUpdatedAt = Date.now();
   const forgingHeroes = (state.heroes || []).filter((h) => { const as = Number(h.actionState); return as === 5; }).map((h) => ({ heroId: h.id, actionState: Number(h.actionState), workshop: Number(h.actionTarget), canComplete: h.canComplete ?? null, actionCompleteTime: h.actionCompleteTime ?? null }));
   recordForgeDebug(accountId, "forge-data.refresh.completed", { workshops: forgeWorkshopsFromProfile(profile).length, typeCount: types.length, eligibleHeroCount: forgeEligibleHeroes(state.heroes).length, mineCount: state.forgeMines.length, forgingHeroes });
-  if (accountId === activeId) { renderHeroes(accountId); renderForgeSettings(); }
+  if (accountId === activeId) { renderHeroes(accountId); if (!skipRender) renderForgeSettings(); }
   return state;
 }
 function loadForgeRecipes() { try { return JSON.parse(localStorage.getItem("autoy.forgeRecipes.v1") || "[]"); } catch { return []; } }
@@ -747,7 +758,9 @@ function setForgeEnabled(accountId, enabled) {
 }
 function forgeWaitMs(actionCompleteTime) {
   const dueAt = Date.parse(actionCompleteTime || "");
-  return Number.isFinite(dueAt) && dueAt > Date.now() ? dueAt - Date.now() + 2000 : 30000;
+  if (!Number.isFinite(dueAt)) return 30000;
+  if (dueAt > Date.now()) return dueAt - Date.now() + 2000;
+  return Date.now() - dueAt < 120000 ? 8000 : 30000;
 }
 function forgeDrafts(accountId, workshops) {
   return Object.fromEntries((workshops || []).map((workshop) => [workshop, forgeDraftForWorkshop(accountId, workshop)]));
@@ -831,6 +844,10 @@ function sleepDelayMs(c) {
   if (end <= now) end.setDate(end.getDate() + 1);
   return (end - now) + Math.floor(Math.random() * 30 * 60 * 1000);
 }
+function updateCaptchaRestVisibility() {
+  const el = $("captcha-rest-settings");
+  if (el) el.hidden = !$("human-like")?.checked;
+}
 function getNonecapUsage() { try { return JSON.parse(localStorage.getItem(nonecapUsageStore) || "{}"); } catch { return {}; } }
 function saveNonecapUsage(u) { try { localStorage.setItem(nonecapUsageStore, JSON.stringify(u)); } catch {} }
 function nonecapUsageKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
@@ -903,7 +920,7 @@ async function forgeTurn(accountId) {
     const fc = config(accountId);
     const forgeSleepMs = sleepDelayMs(fc);
     if (forgeSleepMs > 0) { const sleepMin = Math.round(forgeSleepMs / 60000); log(`擬人模式：睡眠時段，鍛造暫停 ${sleepMin} 分鐘後繼續`, accountId); state.forgeBusy = false; forgeSchedule(forgeSleepMs, accountId); return; }
-    await refreshForgeData(accountId);
+    await refreshForgeData(accountId, { skipRender: state.forgeLastWait === true });
     if (!state.forgeRunning) return;
     const workshops = forgeWorkshopsFromProfile(state.forgeProfile);
     const drafts = forgeDrafts(accountId, workshops);
@@ -912,7 +929,8 @@ async function forgeTurn(accountId) {
     const action = nextForgeAction({ workshops, heroes: state.heroes, drafts, skippedHeroIds: skippedCompleteHeroes, enabledCompleteOnly, forgeDefaultName: config(accountId).forgeDefaultName || "" });
     if (!state.forgeBootScanned && action.kind !== "complete") state.forgeBootScanned = true;
     recordForgeDebug(accountId, "forge.turn.action", { kind: action.kind, heroId: action.heroId ?? null, workshop: action.workshop ?? null, actionCompleteTime: action.actionCompleteTime ?? null, ...(skippedCompleteHeroes.size ? { skippedCompleteHeroes: [...skippedCompleteHeroes].map((s) => s.split(":")[0]) } : {}) });
-    if (action.kind === "wait") { recordForgeDebug(accountId, "forge.wait", { workshop: action.workshop, waitMs: forgeWaitMs(action.actionCompleteTime) }); forgeSchedule(forgeWaitMs(action.actionCompleteTime), accountId); return; }
+    if (action.kind === "wait") { state.forgeLastWait = true; recordForgeDebug(accountId, "forge.wait", { workshop: action.workshop, waitMs: forgeWaitMs(action.actionCompleteTime) }); forgeSchedule(forgeWaitMs(action.actionCompleteTime), accountId); return; }
+    state.forgeLastWait = false;
     if (action.kind === "complete") {
       const heroBeforeComplete = state.heroes.find((entry) => String(entry.id) === String(action.heroId));
       try {
@@ -1639,6 +1657,18 @@ function recoveryUnavailableReason(hero, c, accountId) {
   if (ids.some((id) => allItems.some((item) => String(item.id) === String(id) && itemQuantity(item) <= 0))) return "適用補品已用完";
   return "沒有可用補品";
 }
+function calcUseQuantity(item, hero, c) {
+  const maxPerUse = 10;
+  const available = itemQuantity(item);
+  const healHp = Number(item?.healHp) || 0;
+  const healSp = Number(item?.healSp) || 0;
+  const hpGap = healHp > 0 ? Math.max(0, Math.ceil(hero.fullHp * c.restHp / 100) - hero.hp) : 0;
+  const spGap = healSp > 0 ? Math.max(0, Math.ceil(hero.fullSp * c.restSp / 100) - hero.sp) : 0;
+  const hpNeeded = healHp > 0 && hpGap > 0 ? Math.ceil(hpGap / healHp) : 0;
+  const spNeeded = healSp > 0 && spGap > 0 ? Math.ceil(spGap / healSp) : 0;
+  const needed = Math.max(hpNeeded, spNeeded);
+  return needed >= maxPerUse && available >= maxPerUse ? maxPerUse : 1;
+}
 async function tryUseRecoveryItems(c, accountId) {
   if (!c.useItems || !runtimeFor(accountId).itemRecoveryActive || restComplete(c, accountId)) return false;
   const state = runtimeFor(accountId);
@@ -1653,10 +1683,11 @@ async function tryUseRecoveryItems(c, accountId) {
       return false;
     }
     const before = { hp: hero.hp, sp: hero.sp, quantity: itemQuantity(choice.item) };
+    const quantity = calcUseQuantity(choice.item, hero, c);
     const beforeItem = itemRecoverySnapshot(choice.item);
     const beforeHero = heroRecoverySnapshot(hero);
     let result, retrySucceeded = false;
-    try { result = await request(`/items/${encodeURIComponent(choice.item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity: 1, heroId: hero.id }) }, accountId); }
+    try { result = await request(`/items/${encodeURIComponent(choice.item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity, heroId: hero.id }) }, accountId); }
     catch (error) {
       if (!interceptItemRecoveryIssue) {
         log(`${hero.name} 使用 ${choice.item.name} 的請求結果未確認；未啟用補品異常攔截，下一輪重新讀取後繼續`, accountId);
@@ -1683,7 +1714,7 @@ async function tryUseRecoveryItems(c, accountId) {
         }
         if (!requestWasAborted) {
           try {
-            result = await request(`/items/${encodeURIComponent(choice.item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity: 1, heroId: hero.id }) }, accountId);
+            result = await request(`/items/${encodeURIComponent(choice.item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity, heroId: hero.id }) }, accountId);
             retrySucceeded = true;
           } catch (retryError) {
             createItemRecoveryIncident(accountId, "use-request-failed", "使用補品 API 請求失敗（已重試一次）", { item: { itemId: beforeItem.itemId, before: beforeItem, response: null }, hero: { before: beforeHero, after: null }, error: `${String(error.message || error).slice(0, 80)} → ${String(retryError.message || retryError).slice(0, 80)}` });
@@ -1714,12 +1745,12 @@ async function tryUseRecoveryItems(c, accountId) {
     state.heroes = mergeHeroes(state.heroes, [updatedHero]);
     let afterItem = itemById(choice.item.id, accountId);
     let afterQuantity = afterItem ? itemQuantity(afterItem) : 0;
-    if (afterQuantity >= before.quantity) {
+    if (afterQuantity > before.quantity - quantity) {
       if (!interceptItemRecoveryIssue) return true;
       await refreshItems(accountId);
       afterItem = itemById(choice.item.id, accountId);
       afterQuantity = afterItem ? itemQuantity(afterItem) : 0;
-      if (afterQuantity >= before.quantity) {
+      if (afterQuantity > before.quantity - quantity) {
         if (choice.source === "hero") {
           state.recoveryFallbackHeroes.add(String(hero.id));
           const fallback = configuredRecoveryItem(hero, c, accountId);
@@ -1737,7 +1768,7 @@ async function tryUseRecoveryItems(c, accountId) {
     }
     operation(accountId, "item.used", { heroId: hero.id, heroName: hero.name, itemId: choice.item.id, itemName: choice.item.name, source: choice.source, fallback: choice.fallback === true, before, after: { hp: updatedHero.hp, sp: updatedHero.sp, quantity: afterQuantity } });
     const fallbackText = choice.fallback ? "；指定補品不可用，已改用全隊預設" : choice.source === "team" ? "；使用全隊預設" : "";
-    log(`${hero.name} 使用 ${choice.item.name} × 1${fallbackText}`, accountId);
+    log(`${hero.name} 使用 ${choice.item.name} × ${quantity}${fallbackText}`, accountId);
     state.recoveryFallbackHeroes.delete(String(hero.id));
     used = true;
   }
@@ -2244,6 +2275,10 @@ async function turn(accountId) {
   try {
     const c = config(accountId);
     if (!validConfig(c)) throw new Error("請檢查此帳號的自動狩獵設定");
+    if (c.humanLike && state.captchaRestLastAt && Date.now() - state.captchaRestLastAt > 30 * 60000) {
+      state.captchaRestCount = 0;
+      state.captchaRestLastAt = 0;
+    }
     const sleepMs = sleepDelayMs(c);
     if (sleepMs > 0) { const sleepMin = Math.round(sleepMs / 60000); log(`擬人模式：睡眠時段，${sleepMin} 分鐘後繼續`, accountId); schedule(sleepMs, accountId); return; }
     await refreshAccount(accountId);
@@ -2281,6 +2316,26 @@ async function turn(accountId) {
     else { operation(accountId, "runner.branch", { branch: "hunt" }); debug(accountId, "runner.branch", { branch: "hunt" }); await hunt(c, accountId); }
   } catch (error) {
     if (error.name !== "AbortError" && error.statusCode === 403 && error.responseBody?.code === "CAPTCHA_REQUIRED") {
+      const hc = config(accountId);
+      if (hc.humanLike) {
+        state.captchaRestCount = (state.captchaRestCount || 0) + 1;
+        state.captchaRestLastAt = Date.now();
+        if (state.captchaRestCount >= (hc.captchaRestThreshold || 5)) {
+          const pauseMs = (10 + Math.floor(Math.random() * 21)) * 60000;
+          const pauseMin = Math.round(pauseMs / 60000);
+          const wasForgeRunning = state.forgeRunning;
+          log(`擬人模式：驗證碼次數達上限（${state.captchaRestCount} 次），休息 ${pauseMin} 分鐘後自動重啟`, accountId);
+          state.captchaRestCount = 0;
+          stopRunner(accountId, `驗證碼頻繁，休息 ${pauseMin} 分鐘`);
+          stopForgeRunner(accountId, "驗證碼頻繁");
+          setTimeout(() => {
+            log(`休息結束，重啟自動狩獵${wasForgeRunning ? "與自動鍛造" : ""}`, accountId);
+            startRunner(accountId);
+            if (wasForgeRunning) setForgeEnabled(accountId, true);
+          }, pauseMs);
+          return;
+        }
+      }
       if (state.captchaSolving) {
         log("驗證碼解題中，解題完成後自動重啟狩獵", accountId);
         state.huntPausedForCaptcha = true;
@@ -2453,9 +2508,10 @@ function initAccountEvents() {
   });
   const nonecapInput = $("nonecap-api-key");
   if (nonecapInput) nonecapInput.addEventListener("change", () => { localStorage.setItem(nonecapApiKeyStore, nonecapInput.value.trim()); });
-  for (const id of ["target-stage", "hp-target", "sp-target", "rest-hp-target", "rest-sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console", "item-recovery-incident-enabled", "forge-debug-enabled", "auto-captcha-verify", "auto-hcaptcha-solve", "human-like", "sleep-start", "sleep-end"]) $(id).addEventListener("change", () => {
+  for (const id of ["target-stage", "hp-target", "sp-target", "rest-hp-target", "rest-sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console", "item-recovery-incident-enabled", "forge-debug-enabled", "auto-captcha-verify", "auto-hcaptcha-solve", "human-like", "sleep-start", "sleep-end", "captcha-rest-threshold"]) $(id)?.addEventListener("change", () => {
     persistSettings();
     if (id === "target-stage") updateHuntZoneWarning();
+    if (id === "human-like") updateCaptchaRestVisibility();
     if (id === "flow-messages" && $("flow-messages").checked) log("已啟用流程訊息", activeId);
     if (id === "operation-log" && $("operation-log").checked) operation(activeId, "operation-log.enabled", { message: "使用者啟用操作紀錄" });
     if (id === "forge-debug-enabled" && $("forge-debug-enabled").checked) recordForgeDebug(activeId, "debug.enabled", { message: "使用者啟用鍛造除錯紀錄" });
@@ -2467,6 +2523,7 @@ function init() {
   const nonecapInput = $("nonecap-api-key");
   if (nonecapInput) nonecapInput.value = localStorage.getItem(nonecapApiKeyStore) || "";
   renderNonecapUsage();
+  $("reset-nonecap-usage")?.addEventListener("click", () => { saveNonecapUsage({}); renderNonecapUsage(); });
   if (active()) loadSettings();
   render();
   if (active()) loadAccountSnapshot(activeId);

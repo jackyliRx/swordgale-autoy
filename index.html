@@ -8,7 +8,7 @@
   </head>
   <body>
     <main class="app-shell">
-      <header><h1>Autoy</h1><p>多角色自動狩獵</p><span class="badge app-version">v0.8.53</span></header>
+      <header><h1>Autoy</h1><p>多角色自動狩獵</p><span class="badge app-version">v0.8.54</span></header>
       <div class="workspace">
         <aside class="card sidebar" id="hero-panel">
           <div class="heading"><h2>角色</h2><span id="party-summary" class="badge">尚未讀取</span></div>
@@ -42,9 +42,10 @@
         <section class="item-settings" id="equip-settings" aria-label="裝備自動換裝設定"></section>
         <label class="checkbox-setting"><input id="human-like" type="checkbox" /> 擬人模式（狩獵間隔加入隨機延遲、設定睡眠時段）</label>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:.86rem"><label style="display:flex;gap:6px;align-items:center">睡眠開始<input id="sleep-start" type="time" value="01:00" style="width:110px" /></label><label style="display:flex;gap:6px;align-items:center">睡眠結束<input id="sleep-end" type="time" value="07:00" style="width:110px" /></label></div>
+        <div id="captcha-rest-settings" style="margin-top:6px;font-size:.86rem;display:flex;align-items:center;gap:6px;" hidden>驗證碼次數達 <input id="captcha-rest-threshold" type="number" min="1" max="20" value="5" style="width:52px;" /> 次後休息（時長沿用擬人模式亂數）</div>
         <label class="checkbox-setting"><input id="auto-captcha-verify" type="checkbox" /> 非圖形驗證（偵測到活人驗證時自動勾選送出）</label>
         <label class="checkbox-setting"><input id="auto-hcaptcha-solve" type="checkbox" /> 圖形驗證自動解題（hCaptcha，需設定 NoneCap API Key）</label>
-        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:.86rem;white-space:nowrap">NoneCap API Key</span><input id="nonecap-api-key" type="password" placeholder="nc_live_..." autocomplete="off" style="flex:1;min-width:180px;max-width:320px" /><span id="nonecap-usage" style="font-size:.8rem;white-space:nowrap;color:#9dccff"></span></div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:.86rem;white-space:nowrap">NoneCap API Key</span><input id="nonecap-api-key" type="password" placeholder="nc_live_..." autocomplete="off" style="flex:1;min-width:180px;max-width:320px" /><span id="nonecap-usage" style="font-size:.8rem;white-space:nowrap;color:#9dccff"></span><button id="reset-nonecap-usage" type="button" style="font-size:.8rem;padding:2px 8px;">重置</button></div>
         <div class="actions utility-actions"><button id="open-reports">戰報</button><button id="open-flow">流程訊息</button><button id="open-operations">操作紀錄</button><button id="open-item-recovery-incidents">補品異常</button><button id="open-forge-debug">鍛造除錯</button></div>
         <p id="hunt-zone-warning" class="hint" style="color:#e87878;" hidden>草原秘徑從第 16 層進入，目標樓層需設 16 以上。</p>
         <p id="hunt-zone-stage25-warning" class="hint" style="color:#e87878;" hidden>⚠ 草原秘徑第 25 層有超級綠水靈，強度極高，有全滅死透風險，請確認隊伍強度。</p>
@@ -64,6 +65,6 @@
 
     <dialog id="forge-recipe-dialog"></dialog>
     <dialog id="reports-dialog"><div class="dialog-heading"><h2>狩獵戰報</h2><div class="actions"><button id="refresh-reports">讀取戰報</button><button data-close-dialog>關閉</button></div></div><p class="hint">只在按下「讀取戰報」時請求列表；點選戰報後才讀取單筆詳情並在遊戲端標記已閱。</p><div class="report-layout"><div id="report-list" class="report-list">尚未讀取戰報。</div><article id="report-detail" class="report-detail">請從左側選擇一筆戰報。</article></div></dialog>
-    <script src="./app.js?v=0.8.53"></script>
+    <script src="./app.js?v=0.8.54"></script>
   </body>
 </html>
