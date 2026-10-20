@@ -8,7 +8,7 @@
   </head>
   <body>
     <main class="app-shell">
-      <header><h1>Autoy</h1><p>多角色自動狩獵</p><span class="badge app-version">v0.8.54</span></header>
+      <header><h1>Autoy</h1><p>多角色自動狩獵</p><span class="badge app-version">v0.9.0</span></header>
       <div class="workspace">
         <aside class="card sidebar" id="hero-panel">
           <div class="heading"><h2>角色</h2><span id="party-summary" class="badge">尚未讀取</span></div>
@@ -18,16 +18,17 @@
         <div class="content">
           <section class="card">
             <div class="heading account-heading"><h2>帳號</h2></div>
-            <form id="account-form"><input id="account-label" placeholder="帳號別名" maxlength="40" required /><input id="account-token" type="password" placeholder="遊戲 API token" autocomplete="off" required /><button>新增帳號</button><button id="stop-all" class="danger" type="button">停止全部帳號</button></form>
+            <form id="account-form"><label class="sr-only" for="account-label">帳號別名</label><input id="account-label" placeholder="帳號別名" maxlength="40" required /><label class="sr-only" for="account-token">遊戲 API token</label><input id="account-token" type="password" placeholder="遊戲 API token" autocomplete="off" required /><button>新增帳號</button><button id="stop-all" class="danger" type="button">停止全部帳號</button></form>
             <div id="accounts"></div>
           </section>
           <section class="card" id="automation-card" hidden>
-        <div class="heading"><h2 id="active-label"></h2><span id="run-state" class="badge">已停止</span></div>
+        <div class="heading"><h2 id="active-label" aria-live="polite">目前帳號</h2><span id="run-state" class="badge">已停止</span></div>
         <div class="automation-controls"><div class="control-group"><span class="control-label">目前帳號</span><div class="actions"><button id="refresh">重新讀取</button><button id="start" class="primary">啟動</button><button id="stop" class="danger">停止</button></div></div></div>
         <section class="automation-settings" aria-label="自動狩獵設定">
           <h3>自動狩獵設定</h3>
           <div class="settings">
-            <label>目標地圖<select id="hunt-zone-select"><option value="grassland">大草原</option><option value="secret-path">草原秘徑</option><option value="bull-plains">猛牛原</option><option value="dark-cave">黑暗山洞</option><option value="bat-cave-rock-cave">蝙蝠洞→岩洞</option></select></label>
+            <label>目標地圖<select id="hunt-zone-select"><option value="grassland">大草原</option><option value="secret-path">草原秘徑</option><option value="misty-forest">迷霧森林</option><option value="bull-plains">猛牛原</option><option value="swamp">沼澤地</option><option value="dark-cave">黑暗山洞</option><option value="bat-cave-rock-cave">蝙蝠洞→岩洞</option></select></label>
+            <details class="hunt-zone-guide" open><summary>地圖入口與注意事項</summary><ul><li>初始之鎮：可前往大草原或黑暗山洞。</li><li>大草原：最高第 50 層；第 11 層可進入猛牛原；第 16 層可進入草原秘徑。</li><li>草原秘徑：最高第 50 層；第 27 層可進入迷霧森林。迷霧森林充滿迷霧且很危險。</li><li>猛牛原：最高第 45 層；第 27 層可進入沼澤地。</li><li>沼澤地：第 27 層進入，為極度危險的濕地環境。</li><li>迷霧森林：最高第 50 層。</li><li>黑暗山洞：第 14 層可經岔路進入岩洞。</li><li>岩洞：目前沒有已支援的後續地圖入口。</li></ul><p class="hunt-zone-caution">注意：草原秘徑第 25 層有超級綠水靈、第 40 層有蘑菇王，強度很高，可能造成全滅或死透。每次在第 25 或第 40 層狩獵或前進前，系統會強制使用已設定的補品補滿全隊 HP／SP；無法補滿時會停止。前往迷霧森林時，通過這兩層也會套用相同規則。</p><p class="hunt-zone-caution">注意：目標樓層不可低於入口樓層或高於地圖最高樓層；切換目標地圖前，出戰角色需在同一張已支援地圖且沒有未完成行動。從秘徑、迷霧森林、猛牛原、沼澤地或岩洞切換到其他地圖時，會先回城再出發。</p></details>
             <label>目標樓層<input id="target-stage" type="number" min="1" value="1" /></label>
             <label>HP 補給觸發 %<input id="hp-target" type="number" min="1" max="100" value="80" /></label>
             <label>體力 SP 補給觸發 %<input id="sp-target" type="number" min="1" max="100" value="70" /></label>
@@ -42,15 +43,18 @@
         <section class="item-settings" id="equip-settings" aria-label="裝備自動換裝設定"></section>
         <label class="checkbox-setting"><input id="human-like" type="checkbox" /> 擬人模式（狩獵間隔加入隨機延遲、設定睡眠時段）</label>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:.86rem"><label style="display:flex;gap:6px;align-items:center">睡眠開始<input id="sleep-start" type="time" value="01:00" style="width:110px" /></label><label style="display:flex;gap:6px;align-items:center">睡眠結束<input id="sleep-end" type="time" value="07:00" style="width:110px" /></label></div>
-        <div id="captcha-rest-settings" style="margin-top:6px;font-size:.86rem;display:flex;align-items:center;gap:6px;" hidden>驗證碼次數達 <input id="captcha-rest-threshold" type="number" min="1" max="20" value="5" style="width:52px;" /> 次後休息（時長沿用擬人模式亂數）</div>
+        <div id="captcha-rest-settings" style="margin-top:6px;font-size:.86rem;display:flex;align-items:center;gap:6px;" hidden><label for="captcha-rest-threshold">驗證碼次數達</label><input id="captcha-rest-threshold" type="number" min="1" max="20" value="5" style="width:52px;" /> 次後休息（時長沿用擬人模式亂數）</div>
         <label class="checkbox-setting"><input id="auto-captcha-verify" type="checkbox" /> 非圖形驗證（偵測到活人驗證時自動勾選送出）</label>
         <label class="checkbox-setting"><input id="auto-hcaptcha-solve" type="checkbox" /> 圖形驗證自動解題（hCaptcha，需設定 NoneCap API Key）</label>
-        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:.86rem;white-space:nowrap">NoneCap API Key</span><input id="nonecap-api-key" type="password" placeholder="nc_live_..." autocomplete="off" style="flex:1;min-width:180px;max-width:320px" /><span id="nonecap-usage" style="font-size:.8rem;white-space:nowrap;color:#9dccff"></span><button id="reset-nonecap-usage" type="button" style="font-size:.8rem;padding:2px 8px;">重置</button></div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><label for="nonecap-api-key" style="font-size:.86rem;white-space:nowrap">NoneCap API Key</label><input id="nonecap-api-key" type="password" placeholder="nc_live_..." autocomplete="off" style="flex:1;min-width:180px;max-width:320px" /><span id="nonecap-usage" style="font-size:.8rem;white-space:nowrap;color:#9dccff"></span><button id="reset-nonecap-usage" type="button" style="font-size:.8rem;padding:2px 8px;">重置</button></div>
         <div class="actions utility-actions"><button id="open-reports">戰報</button><button id="open-flow">流程訊息</button><button id="open-operations">操作紀錄</button><button id="open-item-recovery-incidents">補品異常</button><button id="open-forge-debug">鍛造除錯</button></div>
         <p id="hunt-zone-warning" class="hint" style="color:#e87878;" hidden>草原秘徑從第 16 層進入，目標樓層需設 16 以上。</p>
-        <p id="hunt-zone-stage25-warning" class="hint" style="color:#e87878;" hidden>⚠ 草原秘徑第 25 層有超級綠水靈，強度極高，有全滅死透風險，請確認隊伍強度。</p>
+        <p id="hunt-zone-max-stage-warning" class="hint" style="color:#e87878;" hidden></p>
+        <p id="hunt-zone-danger-stage-warning" class="hint" style="color:#e87878;" hidden>⚠ 草原秘徑第 25 層有超級綠水靈、第 40 層有蘑菇王；到達時會先強制補滿全隊 HP／SP。</p>
         <p id="hunt-zone-bull-plains-warning" class="hint" style="color:#e8c078;" hidden>猛牛原從大草原第 11 層進入，目標樓層需設 11 以上。</p>
+        <p id="hunt-zone-swamp-warning" class="hint" style="color:#e8c078;" hidden>沼澤地須經大草原第 11 層與猛牛原第 27 層進入，目標樓層需設 27 以上。</p>
         <p id="hunt-zone-rock-cave-warning" class="hint" style="color:#e8c078;" hidden>蝙蝠洞→岩洞從黑暗山洞第 14 層岔路進入，目標樓層需設 14 以上。</p>
+        <p id="hunt-zone-misty-forest-warning" class="hint" style="color:#e8c078;" hidden>迷霧森林須經大草原第 16 層與草原秘徑第 27 層進入，目標樓層需設 27 以上。</p>
         <p class="hint">停止後不會背景重新讀取；按「重新讀取」會更新角色、狩獵狀態與補品背包。</p>
         <p id="alert" class="alert" hidden></p>
         <div id="death-actions"></div>
@@ -65,6 +69,6 @@
 
     <dialog id="forge-recipe-dialog"></dialog>
     <dialog id="reports-dialog"><div class="dialog-heading"><h2>狩獵戰報</h2><div class="actions"><button id="refresh-reports">讀取戰報</button><button data-close-dialog>關閉</button></div></div><p class="hint">只在按下「讀取戰報」時請求列表；點選戰報後才讀取單筆詳情並在遊戲端標記已閱。</p><div class="report-layout"><div id="report-list" class="report-list">尚未讀取戰報。</div><article id="report-detail" class="report-detail">請從左側選擇一筆戰報。</article></div></dialog>
-    <script src="./app.js?v=0.8.54"></script>
+    <script src="./app.js?v=0.9.0"></script>
   </body>
 </html>

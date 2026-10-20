@@ -202,7 +202,7 @@
     });
     panel.addEventListener("pointerup", () => { drag = null; });
 
-    loadAccounts().then((loaded) => { accounts = loaded; render(); show(isLoginPage() ? "登入頁已偵測；選擇帳號後可填入。" : "目前非登入頁；可管理帳號或清除本站 Local Storage。" ); });
+    void loadAccounts().then((loaded) => { accounts = loaded; render(); show(isLoginPage() ? "登入頁已偵測；選擇帳號後可填入。" : "目前非登入頁；可管理帳號或清除本站 Local Storage。" ); });
   }
 
   if (typeof window !== "undefined") {
@@ -210,7 +210,7 @@
     else mount();
   }
 
-  if (typeof globalThis !== "undefined" && globalThis.__AUTOY_ACCOUNT_SWITCHER_TEST__) {
+  if (typeof globalThis !== "undefined" && (globalThis.__AUTOY_ACCOUNT_SWITCHER_TEST__ || typeof document === "undefined")) {
     globalThis.__AUTOY_ACCOUNT_SWITCHER_TEST_API__ = { normalizeAccounts, saveAccountEntry };
   }
 })();
