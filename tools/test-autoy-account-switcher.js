@@ -1,13 +1,7 @@
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import vm from "node:vm";
+import "./autoy-account-switcher.user.js";
 
-const source = fs.readFileSync("tools/autoy-account-switcher.user.js", "utf8");
-const context = { __AUTOY_ACCOUNT_SWITCHER_TEST__: true };
-context.globalThis = context;
-vm.runInNewContext(source, context, { filename: "autoy-account-switcher.user.js" });
-
-const { normalizeAccounts } = context.__AUTOY_ACCOUNT_SWITCHER_TEST_API__;
+const { normalizeAccounts } = globalThis.__AUTOY_ACCOUNT_SWITCHER_TEST_API__;
 assert.deepEqual(
   JSON.parse(JSON.stringify(normalizeAccounts([
     { id: "a", alias: " 主帳號 ", username: " user@example.com " },

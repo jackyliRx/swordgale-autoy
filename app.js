@@ -40,10 +40,14 @@ function drainApiRequestQueue() {
   while (activeApiRequests < maxConcurrentApiRequests && apiRequestQueue.length) {
     const next = apiRequestQueue.shift();
     activeApiRequests += 1;
-    Promise.resolve().then(next.task).then(next.resolve, next.reject).finally(() => {
-      activeApiRequests -= 1;
-      drainApiRequestQueue();
-    });
+    void (async () => {
+      try { next.resolve(await next.task()); }
+      catch (error) { next.reject(error); }
+      finally {
+        activeApiRequests -= 1;
+        drainApiRequestQueue();
+      }
+    })();
   }
 }
 function queueApiRequest(task) {
@@ -168,7 +172,9 @@ function config(accountId = activeId) {
   if (account?.settings) { const settings = { ...defaultSettings(), ...account.settings }; return { target: Number(settings.target), huntZone: settings.huntZone || "grassland", hp: Number(settings.hp), sp: Number(settings.sp), restHp: Number(settings.restHp), restSp: Number(settings.restSp), useItems: settings.useItems === true, teamItems: settings.teamItems || {}, heroItems: settings.heroItems || {}, restMinutes: Number(settings.restMinutes), alertMinutes: Number(settings.alertMinutes), flowMessages: settings.flowMessages !== false, operationLog: settings.operationLog === true, debug: settings.debug === true, itemRecoveryIncidentEnabled: settings.itemRecoveryIncidentEnabled === true, forgeDebugEnabled: settings.forgeDebugEnabled === true, autoCaptchaVerify: settings.autoCaptchaVerify === true, autoHcaptchaSolve: settings.autoHcaptchaSolve === true, humanLike: settings.humanLike === true, sleepStart: settings.sleepStart || "01:00", sleepEnd: settings.sleepEnd || "07:00", captchaRestThreshold: Math.max(1, Number(settings.captchaRestThreshold) || 5), equipAutoSwap: settings.equipAutoSwap === true, equipDurThreshold: Number(settings.equipDurThreshold) || 100, equipPickPriority: settings.equipPickPriority || "dur_asc", forgeDefaultName: settings.forgeDefaultName || "", heroEquipSettings: settings.heroEquipSettings || {} }; }
   return { target: Number($("target-stage").value), huntZone: $("hunt-zone-select")?.value || "grassland", hp: Number($("hp-target").value), sp: Number($("sp-target").value), restHp: Number($("rest-hp-target").value), restSp: Number($("rest-sp-target").value), useItems: $("use-items").checked, teamItems: {}, heroItems: {}, restMinutes: Number($("rest-minutes").value), alertMinutes: Number($("alert-minutes").value), flowMessages: $("flow-messages").checked, operationLog: $("operation-log").checked, debug: $("debug-console").checked, itemRecoveryIncidentEnabled: $("item-recovery-incident-enabled").checked, forgeDebugEnabled: $("forge-debug-enabled").checked, autoCaptchaVerify: $("auto-captcha-verify").checked };
 }
-function validConfig(c) { return Number.isInteger(c.target) && c.target > 0 && c.hp >= 1 && c.hp <= 100 && c.sp >= 1 && c.sp <= 100 && c.restHp >= c.hp && c.restHp <= 100 && c.restSp >= c.sp && c.restSp <= 100 && c.restMinutes > 0 && c.alertMinutes >= 1 && (c.huntZone !== "secret-path" || c.target >= 16) && (c.huntZone !== "bull-plains" || c.target >= 11) && (c.huntZone !== "bat-cave-rock-cave" || c.target >= 14); }
+const HUNT_ZONE_MAX_STAGES = { grassland: 50, "secret-path": 50, "bull-plains": 45, "misty-forest": 50 };
+const HUNT_ZONE_LABELS = { grassland: "大草原", "secret-path": "草原秘徑", "bull-plains": "猛牛原", "misty-forest": "迷霧森林", swamp: "沼澤地", "dark-cave": "黑暗山洞", "bat-cave-rock-cave": "蝙蝠洞→岩洞" };
+function validConfig(c) { return Number.isInteger(c.target) && c.target > 0 && c.hp >= 1 && c.hp <= 100 && c.sp >= 1 && c.sp <= 100 && c.restHp >= c.hp && c.restHp <= 100 && c.restSp >= c.sp && c.restSp <= 100 && c.restMinutes > 0 && c.alertMinutes >= 1 && (HUNT_ZONE_MAX_STAGES[c.huntZone] == null || c.target <= HUNT_ZONE_MAX_STAGES[c.huntZone]) && (c.huntZone !== "secret-path" || c.target >= 16) && (c.huntZone !== "misty-forest" || c.target >= 27) && (c.huntZone !== "swamp" || c.target >= 27) && (c.huntZone !== "bull-plains" || c.target >= 11) && (c.huntZone !== "bat-cave-rock-cave" || c.target >= 14); }
 function defaultSettings() { return { target: 1, huntZone: "grassland", hp: 80, sp: 70, restHp: 90, restSp: 90, useItems: false, teamItems: {}, heroItems: {}, restMinutes: 1, alertMinutes: 3, flowMessages: true, operationLog: false, debug: false, itemRecoveryIncidentEnabled: false, forgeDebugEnabled: false, forgeEnabled: false, forgeWorkshops: {}, forgeDefaultName: "", autoCaptchaVerify: false, autoHcaptchaSolve: false, humanLike: false, sleepStart: "01:00", sleepEnd: "07:00", captchaRestThreshold: 5, equipAutoSwap: false, equipDurThreshold: 100, equipPickPriority: "dur_asc", heroEquipSettings: {} }; }
 function loadSettings(account = active()) {
   if (!account) return;
@@ -508,39 +514,39 @@ function renderForgeRecipeDialog(accountId = activeId, editingIdx = -1) {
   // 新增配方
   const newMines = [];
   dlg.querySelector("#recipe-add-material").onclick = () => {
-    const sel = dlg.querySelector("#recipe-new-material"); const qty = parseInt(dlg.querySelector("#recipe-new-qty").value);
+    const sel = dlg.querySelector("#recipe-new-material"); const qty = Number.parseInt(dlg.querySelector("#recipe-new-qty").value, 10);
     if (!sel.value || !qty || qty < 1) return;
     const existing = newMines.find((e) => e.itemId === sel.value);
     if (existing) existing.quantity += qty; else newMines.push({ itemId: sel.value, quantity: qty });
     function refreshMineList() {
       const ul = dlg.querySelector("#recipe-new-mines");
       ul.innerHTML = newMines.length ? newMines.map((e, i) => { const m = state.forgeMines.find((m) => String(m.id) === String(e.itemId)); return `<li>${safe(m?.name || e.itemId)} ×${e.quantity} <button type="button" data-mine-idx="${i}">移除</button></li>`; }).join("") : `<li class="hint">尚未選擇材料。</li>`;
-      ul.querySelectorAll("[data-mine-idx]").forEach((b) => { b.onclick = () => { newMines.splice(parseInt(b.dataset.mineIdx), 1); refreshMineList(); }; });
+      ul.querySelectorAll("[data-mine-idx]").forEach((b) => { b.onclick = () => { newMines.splice(Number.parseInt(b.dataset.mineIdx, 10), 1); refreshMineList(); }; });
     }
     refreshMineList();
   };
   dlg.querySelector("#recipe-save-btn").onclick = () => {
     const label = dlg.querySelector("#recipe-new-label").value.trim();
     if (!label) { alert("請輸入配方名稱"); return; }
-    const recipe = { id: String(Date.now()) + Math.random().toString(36).slice(2, 7), label, type: dlg.querySelector("#recipe-new-type").value, selectedMines: newMines.map((e) => { const mine = state.forgeMines.find((m) => String(m.id) === String(e.itemId)); return { itemId: String(e.itemId), quantity: e.quantity, name: mine?.name || "" }; }) };
+    const recipe = { id: crypto.randomUUID(), label, type: dlg.querySelector("#recipe-new-type").value, selectedMines: newMines.map((e) => { const mine = state.forgeMines.find((m) => String(m.id) === String(e.itemId)); return { itemId: String(e.itemId), quantity: e.quantity, name: mine?.name || "" }; }) };
     const all = loadForgeRecipes(); all.push(recipe); saveForgeRecipes(all);
     renderForgeRecipeDialog(accountId);
   };
   // 複製 / 編輯 / 刪除
-  dlg.querySelectorAll(".recipe-copy-btn").forEach((btn) => { btn.onclick = () => { const all = loadForgeRecipes(); const src = all[parseInt(btn.dataset.recipeIdx)]; if (!src) return; const copy = { ...src, id: String(Date.now()) + Math.random().toString(36).slice(2, 7), label: src.label + "（複製）", selectedMines: (src.selectedMines || []).map((e) => ({ ...e })) }; all.push(copy); saveForgeRecipes(all); renderForgeRecipeDialog(accountId); }; });
-  dlg.querySelectorAll(".recipe-edit-btn").forEach((btn) => { btn.onclick = () => renderForgeRecipeDialog(accountId, parseInt(btn.dataset.recipeIdx)); });
-  dlg.querySelectorAll(".recipe-delete-btn").forEach((btn) => { btn.onclick = () => { if (!confirm("確定刪除這個配方？")) return; const all = loadForgeRecipes(); all.splice(parseInt(btn.dataset.recipeIdx), 1); saveForgeRecipes(all); renderForgeRecipeDialog(accountId); }; });
+  dlg.querySelectorAll(".recipe-copy-btn").forEach((btn) => { btn.onclick = () => { const all = loadForgeRecipes(); const src = all[Number.parseInt(btn.dataset.recipeIdx, 10)]; if (!src) return; const copy = { ...src, id: crypto.randomUUID(), label: src.label + "（複製）", selectedMines: (src.selectedMines || []).map((e) => ({ ...e })) }; all.push(copy); saveForgeRecipes(all); renderForgeRecipeDialog(accountId); }; });
+  dlg.querySelectorAll(".recipe-edit-btn").forEach((btn) => { btn.onclick = () => renderForgeRecipeDialog(accountId, Number.parseInt(btn.dataset.recipeIdx, 10)); });
+  dlg.querySelectorAll(".recipe-delete-btn").forEach((btn) => { btn.onclick = () => { if (!confirm("確定刪除這個配方？")) return; const all = loadForgeRecipes(); all.splice(Number.parseInt(btn.dataset.recipeIdx, 10), 1); saveForgeRecipes(all); renderForgeRecipeDialog(accountId); }; });
   // 編輯表單
   if (editingIdx >= 0 && editingIdx < recipes.length) {
     const editMines = (recipes[editingIdx].selectedMines || []).map((e) => ({ ...e }));
     function refreshEditMineList() {
       const ul = dlg.querySelector("#recipe-edit-mines");
       ul.innerHTML = editMines.length ? editMines.map((e, i) => { const m = state.forgeMines.find((m) => String(m.id) === String(e.itemId)); return `<li>${safe(m?.name || e.name || String(e.itemId))} ×${e.quantity} <button type="button" data-edit-mine-idx="${i}">移除</button></li>`; }).join("") : `<li class="hint">尚未選擇材料。</li>`;
-      ul.querySelectorAll("[data-edit-mine-idx]").forEach((b) => { b.onclick = () => { editMines.splice(parseInt(b.dataset.editMineIdx), 1); refreshEditMineList(); }; });
+      ul.querySelectorAll("[data-edit-mine-idx]").forEach((b) => { b.onclick = () => { editMines.splice(Number.parseInt(b.dataset.editMineIdx, 10), 1); refreshEditMineList(); }; });
     }
     refreshEditMineList();
     dlg.querySelector("#recipe-edit-add-material").onclick = () => {
-      const sel = dlg.querySelector("#recipe-edit-material"); const qty = parseInt(dlg.querySelector("#recipe-edit-qty").value);
+      const sel = dlg.querySelector("#recipe-edit-material"); const qty = Number.parseInt(dlg.querySelector("#recipe-edit-qty").value, 10);
       if (!sel.value || !qty || qty < 1) return;
       const existing = editMines.find((e) => e.itemId === sel.value);
       if (existing) existing.quantity += qty; else editMines.push({ itemId: sel.value, quantity: qty });
@@ -566,7 +572,7 @@ function renderForgeRecipeDialog(accountId = activeId, editingIdx = -1) {
       if (!Array.isArray(parsed)) throw new Error("最外層必須是陣列");
       const valid = parsed.filter((r) => r && typeof r.label === "string" && r.label.trim());
       if (!valid.length) throw new Error("找不到有效配方（需有 label 欄位）");
-      const incoming = valid.map((r) => ({ id: r.id || String(Date.now()) + Math.random().toString(36).slice(2, 7), label: String(r.label).trim(), type: String(r.type || ""), selectedMines: Array.isArray(r.selectedMines) ? r.selectedMines.map((e) => ({ itemId: String(e.itemId), quantity: Number(e.quantity) || 1, ...(e.name ? { name: String(e.name) } : {}) })) : [] }));
+      const incoming = valid.map((r) => ({ id: r.id || crypto.randomUUID(), label: String(r.label).trim(), type: String(r.type || ""), selectedMines: Array.isArray(r.selectedMines) ? r.selectedMines.map((e) => ({ itemId: String(e.itemId), quantity: Number(e.quantity) || 1, ...(e.name ? { name: String(e.name) } : {}) })) : [] }));
       const result = overwrite ? incoming : (() => { const existing = loadForgeRecipes(); const existingIds = new Set(existing.map((r) => r.id)); return [...existing, ...incoming.filter((r) => !existingIds.has(r.id))]; })();
       saveForgeRecipes(result);
       msg.textContent = `匯入成功，共 ${result.length} 筆配方。`;
@@ -647,7 +653,7 @@ function renderForgeSettings(accountId = activeId) {
   panel.onchange = (e) => {
     const t = e.target;
     if (t.dataset.forgeApplyRecipe !== undefined) {
-      const w = parseInt(t.dataset.forgeApplyRecipe);
+      const w = Number.parseInt(t.dataset.forgeApplyRecipe, 10);
       if (!w || !t.value) return;
       const recipe = loadForgeRecipes().find((r) => r.id === t.value);
       if (!recipe) return;
@@ -659,7 +665,7 @@ function renderForgeSettings(accountId = activeId) {
       renderForgeSettings(accountId);
       return;
     }
-    const w = parseInt(t.dataset.forgeJobEnabled ?? t.dataset.forgeHero ?? t.dataset.forgeType ?? t.dataset.forgeRecovery ?? t.dataset.forgeCopy ?? "");
+    const w = Number.parseInt(t.dataset.forgeJobEnabled ?? t.dataset.forgeHero ?? t.dataset.forgeType ?? t.dataset.forgeRecovery ?? t.dataset.forgeCopy ?? "", 10);
     if (!w) return;
     const draft = forgeDraftForWorkshop(accountId, w);
     if (t.dataset.forgeJobEnabled !== undefined) { draft.enabled = t.checked; if (t.checked) forgeWorkshopErrors.delete(`${accountId}:${w}`); saveForgeDraft(accountId, draft); renderForgeSettings(accountId); if (t.checked && runtimeFor(accountId).forgeRunning) forgeSchedule(1000, accountId); }
@@ -667,7 +673,7 @@ function renderForgeSettings(accountId = activeId) {
     else if (t.dataset.forgeType !== undefined) { draft.type = t.value; saveForgeDraft(accountId, draft); }
     else if (t.dataset.forgeRecovery !== undefined) { draft.recoveryItemId = t.value; saveForgeDraft(accountId, draft); }
     else if (t.dataset.forgeCopy !== undefined) {
-      const src = parseInt(t.value);
+      const src = Number.parseInt(t.value, 10);
       if (!src) return;
       const src_draft = forgeDraftForWorkshop(accountId, src);
       Object.assign(draft, { heroId: src_draft.heroId, name: src_draft.name, type: src_draft.type, selectedMines: src_draft.selectedMines.map((e) => ({ ...e })), recoveryItemId: src_draft.recoveryItemId });
@@ -683,7 +689,7 @@ function renderForgeSettings(accountId = activeId) {
       if (acc) { acc.settings = { ...defaultSettings(), ...(acc.settings || {}), forgeDefaultName: t.value.trim() }; save(); }
       return;
     }
-    const w = parseInt(t.dataset.forgeName ?? "");
+    const w = Number.parseInt(t.dataset.forgeName ?? "", 10);
     if (!w) return;
     const draft = forgeDraftForWorkshop(accountId, w);
     draft.name = t.value;
@@ -692,7 +698,7 @@ function renderForgeSettings(accountId = activeId) {
   panel.onclick = (e) => {
     const t = e.target;
     if (t.dataset.forgeToggle !== undefined) {
-      const w = parseInt(t.dataset.forgeToggle);
+      const w = Number.parseInt(t.dataset.forgeToggle, 10);
       const expanded = forgeExpanded(accountId);
       if (expanded.has(w)) expanded.delete(w); else expanded.add(w);
       const card = panel.querySelector(`[data-w="${w}"]`);
@@ -700,12 +706,12 @@ function renderForgeSettings(accountId = activeId) {
       return;
     }
     if (t.dataset.forgeAdd !== undefined) {
-      const w = parseInt(t.dataset.forgeAdd);
+      const w = Number.parseInt(t.dataset.forgeAdd, 10);
       const matSel = panel.querySelector(`[data-forge-material="${w}"]`);
       const qtySel = panel.querySelector(`[data-forge-qty="${w}"]`);
       if (!matSel || !qtySel) return;
       const itemId = matSel.value;
-      const quantity = parseInt(qtySel.value);
+      const quantity = Number.parseInt(qtySel.value, 10);
       if (!itemId || !Number.isInteger(quantity) || quantity <= 0) return;
       const draft = forgeDraftForWorkshop(accountId, w);
       draft.selectedMines = [...draft.selectedMines, { itemId, quantity }];
@@ -714,9 +720,9 @@ function renderForgeSettings(accountId = activeId) {
     }
     if (t.dataset.forgeRemove !== undefined) {
       const parts = t.dataset.forgeRemove.split("-");
-      const w = parseInt(parts[0]);
-      const idx = parseInt(parts[1]);
-      if (isNaN(w) || isNaN(idx)) return;
+      const w = Number.parseInt(parts[0], 10);
+      const idx = Number.parseInt(parts[1], 10);
+      if (Number.isNaN(w) || Number.isNaN(idx)) return;
       const draft = forgeDraftForWorkshop(accountId, w);
       draft.selectedMines.splice(idx, 1);
       saveForgeDraft(accountId, draft);
@@ -817,8 +823,15 @@ async function useForgeRecoveryItem(accountId, workshop, hero) {
     await refreshForgeAfterUncertainWrite(accountId, "forge.recovery.write", error);
   }
 }
-function randomCaptchaThreshold() { return 5 + Math.floor(Math.random() * 11); }
-function huntJitter(c) { return c.humanLike ? Math.floor(Math.random() * 30001) : 0; }
+function secureRandomInt(maxExclusive) {
+  if (!Number.isSafeInteger(maxExclusive) || maxExclusive <= 0 || maxExclusive > 0x100000000) throw new RangeError("maxExclusive 必須是有效的正整數");
+  const limit = Math.floor(0x100000000 / maxExclusive) * maxExclusive;
+  const values = new Uint32Array(1);
+  do { crypto.getRandomValues(values); } while (values[0] >= limit);
+  return values[0] % maxExclusive;
+}
+function randomCaptchaThreshold() { return 5 + secureRandomInt(11); }
+function huntJitter(c) { return c.humanLike ? secureRandomInt(30001) : 0; }
 function scheduleHunt(T_send, T_recv, c, accountId) {
   const baseMs = (T_send + T_recv) / 2 + 10300 - Date.now();
   const jitter = huntJitter(c);
@@ -842,7 +855,7 @@ function sleepDelayMs(c) {
   if (!inSleep) return 0;
   const end = new Date(); end.setHours(eh, em, 0, 0);
   if (end <= now) end.setDate(end.getDate() + 1);
-  return (end - now) + Math.floor(Math.random() * 30 * 60 * 1000);
+  return (end - now) + secureRandomInt(30 * 60 * 1000);
 }
 function updateCaptchaRestVisibility() {
   const el = $("captcha-rest-settings");
@@ -880,7 +893,7 @@ async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
     if (!result) return false;
     if (result.status !== "solved" || !result.token) { log(`NoneCap 解題失敗：${result.error || JSON.stringify(result)}`, accountId); return false; }
     log(`NoneCap 解題成功（${result.resolve_ms ?? "?"}ms）`, accountId);
-    const waitMs = 2000 + Math.floor(Math.random() * 3001);
+    const waitMs = 2000 + secureRandomInt(3001);
     log(`等待 ${(waitMs / 1000).toFixed(1)}s 後提交驗證...`, accountId);
     await new Promise((r) => setTimeout(r, waitMs));
     const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, token: result.token }) }, accountId);
@@ -890,7 +903,7 @@ async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
     state.captchaSolveCount = (state.captchaSolveCount || 0) + 1;
     log(`hCaptcha 已解題 ${state.captchaSolveCount}/${state.captchaThreshold} 次（本月累計 ${monthTotal} 次）`, accountId);
     if (state.captchaSolveCount >= state.captchaThreshold) {
-      const pauseMs = (10 + Math.floor(Math.random() * 21)) * 60000;
+      const pauseMs = (10 + secureRandomInt(21)) * 60000;
       const pauseMin = Math.round(pauseMs / 60000);
       const wasForgeRunning = state.forgeRunning;
       stopRunner(accountId, `hCaptcha 解題次數達上限，暫停 ${pauseMin} 分鐘`);
@@ -1014,7 +1027,7 @@ async function forgeTurn(accountId) {
       }
       state.captchaSolving = true;
       try {
-        const preWaitMs = 3000 + Math.floor(Math.random() * 5001);
+        const preWaitMs = 3000 + secureRandomInt(5001);
         log(`偵測到驗證要求，等待 ${(preWaitMs / 1000).toFixed(1)}s 後處理...`, accountId);
         await new Promise((r) => setTimeout(r, preWaitMs));
         const captchaInfo = await request("/captcha", {}, accountId);
@@ -1023,7 +1036,7 @@ async function forgeTurn(accountId) {
         if (captchaInfo.type === "hcaptcha" && challengeId != null) {
           if (config(accountId).autoHcaptchaSolve) {
             const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
-            if (solved === true) { log("hCaptcha 驗證通過，繼續自動鍛造", accountId); if (state.huntPausedForCaptcha) { state.huntPausedForCaptcha = false; log("自動狩獵已重啟", accountId); startRunner(accountId); } forgeSchedule(2000 + Math.floor(Math.random() * 6001), accountId); return; }
+            if (solved === true) { log("hCaptcha 驗證通過，繼續自動鍛造", accountId); if (state.huntPausedForCaptcha) { state.huntPausedForCaptcha = false; log("自動狩獵已重啟", accountId); startRunner(accountId); } forgeSchedule(2000 + secureRandomInt(6001), accountId); return; }
             if (solved === "paused") return;
             log("hCaptcha 驗證未通過，停止自動鍛造", accountId);
           } else {
@@ -1031,7 +1044,7 @@ async function forgeTurn(accountId) {
           }
         } else if (config(accountId).autoCaptchaVerify && challengeId != null) {
           const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, checked: true }) }, accountId);
-          if (verifyResult?.ok === true) { log("非圖形驗證通過，繼續自動鍛造", accountId); if (state.huntPausedForCaptcha) { state.huntPausedForCaptcha = false; log("自動狩獵已重啟", accountId); startRunner(accountId); } forgeSchedule(2000 + Math.floor(Math.random() * 6001), accountId); return; }
+          if (verifyResult?.ok === true) { log("非圖形驗證通過，繼續自動鍛造", accountId); if (state.huntPausedForCaptcha) { state.huntPausedForCaptcha = false; log("自動狩獵已重啟", accountId); startRunner(accountId); } forgeSchedule(2000 + secureRandomInt(6001), accountId); return; }
           log("非圖形驗證未通過，停止自動鍛造", accountId);
         } else {
           log("偵測到驗證要求，停止自動鍛造", accountId);
@@ -1191,7 +1204,7 @@ async function refreshAccount(accountId = activeId, { quiet = false } = {}) {
     state.heroes = heroData.heroes || [];
     state.canForward = huntInfo.canForward ?? null;
     state.cooldownAt = localCooldownAt(huntInfo.huntAvailableAt, state);
-    if (huntInfo.paths) state.huntPaths = huntInfo.paths;
+    state.huntPaths = Array.isArray(huntInfo.paths) ? huntInfo.paths : [];
     state.equipments = Array.isArray(equipData) ? equipData : (equipData?.equipments || []);
     debug(accountId, "state.refreshed", { party: partyDebug(state.heroes.filter((hero) => hero.selected === true)), huntZone: huntInfo.huntZone, huntStage: huntInfo.huntStage, canForward: state.canForward, cooldownAt: huntInfo.huntAvailableAt || null });
     if (accountId === activeId) {
@@ -1214,7 +1227,7 @@ function renderAccounts() {
     activeId = button.dataset.select;
     loadSettings(active());
     render();
-    loadAccountSnapshot(activeId);
+    void loadAccountSnapshot(activeId).catch((error) => warn(`讀取帳號快照失敗：${error.message || error}`, activeId));
   });
   document.querySelectorAll("[data-run]").forEach((button) => button.onclick = () => {
     const id = button.dataset.run;
@@ -1223,7 +1236,7 @@ function renderAccounts() {
   document.querySelectorAll("[data-copy-token]").forEach((button) => button.onclick = () => {
     const id = button.dataset.copyToken;
     const account = accounts.find((entry) => entry.id === id);
-    if (account) copyText(account.token, `${account.label} 的 TOKEN 已複製`, id);
+    if (account) void copyText(account.token, `${account.label} 的 TOKEN 已複製`, id);
   });
   document.querySelectorAll("[data-delete]").forEach((button) => button.onclick = () => {
     const id = button.dataset.delete;
@@ -1553,13 +1566,13 @@ async function beginHuntMoveToZone(accountId, zoneId) {
   log(`自動狩獵：已從城鎮開始前往${zoneName}`, accountId);
   scheduleHuntMove(accountId, party, `前往${zoneName}中`);
 }
-const FORK_ZONE_NAMES = { 10001: "猛牛原", 10002: "草原秘徑", 20001: "岩洞" };
+const FORK_ZONE_NAMES = { 10001: "猛牛原", 10002: "草原秘徑", 10003: "迷霧森林", 10004: "沼澤地", 20001: "岩洞" };
 async function beginHuntEnterForkPath(accountId, forkZoneId) {
   const forkZoneName = FORK_ZONE_NAMES[forkZoneId] || `秘境 ${forkZoneId}`;
   const state = runtimeFor(accountId);
   const result = await request(`/moveForkPath/${encodeURIComponent(forkZoneId)}`, { method: "POST" }, accountId);
   state.heroes = mergeHeroes(state.heroes, result.heroes || []);
-  if (result.paths) state.huntPaths = result.paths;
+  state.huntPaths = Array.isArray(result.paths) ? result.paths : [];
   state.canForward = result.canForward ?? state.canForward;
   await refreshAccount(accountId, { quiet: true });
   const party = selectedParty(accountId);
@@ -1615,6 +1628,16 @@ function partyVitalsValid(party) {
 function pct(current, max) { return max > 0 ? current / max * 100 : 0; }
 function needsRest(c, accountId) { return selectedParty(accountId).some((hero) => pct(hero.hp, hero.fullHp) < c.hp || pct(hero.sp, hero.fullSp) < c.sp); }
 function restComplete(c, accountId) { return selectedParty(accountId).every((hero) => pct(hero.hp, hero.fullHp) >= c.restHp && pct(hero.sp, hero.fullSp) >= c.restSp); }
+function secretPathSafetyStage(c, accountId) {
+  const party = selectedParty(accountId);
+  const stage = Number(party[0]?.huntStage);
+  return (c.huntZone === "secret-path" || c.huntZone === "misty-forest") && party.length > 0 && party.every((hero) => Number(hero.huntZone) === 10002 && Number(hero.huntStage) === stage) && (stage === 25 || stage === 40) ? stage : null;
+}
+function fullRecoveryConfig(c) { return { ...c, restHp: 100, restSp: 100 }; }
+function fullRecoveryNeedText(c, accountId) {
+  const strictConfig = fullRecoveryConfig(c);
+  return selectedParty(accountId).filter((hero) => pct(hero.hp, hero.fullHp) < 100 || pct(hero.sp, hero.fullSp) < 100).map((hero) => `${hero.name} ${recoveryNeedText(hero, strictConfig)}（${recoveryUnavailableReason(hero, strictConfig, accountId)}）`).join("；");
+}
 function recoveryKinds(hero, c) {
   const lowHp = pct(hero.hp, hero.fullHp) < c.restHp;
   const lowSp = pct(hero.sp, hero.fullSp) < c.restSp;
@@ -1669,9 +1692,10 @@ function calcUseQuantity(item, hero, c) {
   const needed = Math.max(hpNeeded, spNeeded);
   return needed >= maxPerUse && available >= maxPerUse ? maxPerUse : 1;
 }
-async function tryUseRecoveryItems(c, accountId) {
+async function tryUseRecoveryItems(c, accountId, { strict = false } = {}) {
   if (!c.useItems || !runtimeFor(accountId).itemRecoveryActive || restComplete(c, accountId)) return false;
   const state = runtimeFor(accountId);
+  const recoveryFailureAction = strict ? "已停止安全補給" : "已自動進入休息";
   const interceptItemRecoveryIssue = shouldInterceptItemRecoveryIssue(c);
   if (!state.itemsUpdatedAt || Date.now() - state.itemsUpdatedAt > 15000) await refreshItems(accountId);
   let used = false;
@@ -1679,7 +1703,7 @@ async function tryUseRecoveryItems(c, accountId) {
     if (!recoveryKinds(hero, c).length) continue;
     const choice = configuredRecoveryItem(hero, c, accountId);
     if (!choice) {
-      log(`${hero.name} ${recoveryNeedText(hero, c)}，${recoveryUnavailableReason(hero, c, accountId)}，已自動進入休息`, accountId);
+      log(`${hero.name} ${recoveryNeedText(hero, c)}，${recoveryUnavailableReason(hero, c, accountId)}，${recoveryFailureAction}`, accountId);
       return false;
     }
     const before = { hp: hero.hp, sp: hero.sp, quantity: itemQuantity(choice.item) };
@@ -1718,20 +1742,20 @@ async function tryUseRecoveryItems(c, accountId) {
             retrySucceeded = true;
           } catch (retryError) {
             createItemRecoveryIncident(accountId, "use-request-failed", "使用補品 API 請求失敗（已重試一次）", { item: { itemId: beforeItem.itemId, before: beforeItem, response: null }, hero: { before: beforeHero, after: null }, error: `${String(error.message || error).slice(0, 80)} → ${String(retryError.message || retryError).slice(0, 80)}` });
-            log(`${hero.name} 使用 ${choice.item.name} 失敗（重試後仍失敗），已自動進入休息：${retryError.message || retryError}`, accountId); return false;
+            log(`${hero.name} 使用 ${choice.item.name} 失敗（重試後仍失敗），${recoveryFailureAction}：${retryError.message || retryError}`, accountId); return false;
           }
         }
       } catch { /* Preserve the original request evidence; never resend without confirming non-consumption. */ }
       if (!retrySucceeded) {
         createItemRecoveryIncident(accountId, "use-request-failed", "使用補品 API 請求失敗", { item: { itemId: beforeItem.itemId, before: beforeItem, response: null }, hero: { before: beforeHero, after: null }, error: String(error.message || error).slice(0, 160) });
-        log(`${hero.name} 使用 ${choice.item.name} 失敗，已自動進入休息：${error.message || error}`, accountId); return false;
+        log(`${hero.name} 使用 ${choice.item.name} 失敗，${recoveryFailureAction}：${error.message || error}`, accountId); return false;
       }
     }
     const updatedItems = normalizeItems(result.items);
     if (!updatedItems) {
       if (!interceptItemRecoveryIssue) return true;
       createItemRecoveryIncident(accountId, "inventory-missing", "使用補品成功回應未包含可辨識背包資料", { item: { itemId: beforeItem.itemId, before: beforeItem, response: null }, hero: { before: beforeHero, after: heroRecoverySnapshot(result.hero) } });
-      log(`${hero.name} 使用 ${choice.item.name} 後未回傳可辨識的背包資料，已自動進入休息`, accountId); return false;
+      log(`${hero.name} 使用 ${choice.item.name} 後未回傳可辨識的背包資料，${recoveryFailureAction}`, accountId); return false;
     }
     state.items = updatedItems; state.itemsUpdatedAt = Date.now();
     const account = accounts.find((entry) => entry.id === accountId);
@@ -1740,7 +1764,7 @@ async function tryUseRecoveryItems(c, accountId) {
     if (!updatedHero) {
       if (!interceptItemRecoveryIssue) return true;
       createItemRecoveryIncident(accountId, "hero-missing", "使用補品成功回應未包含角色資料", { item: { itemId: beforeItem.itemId, before: beforeItem, response: itemRecoverySnapshot((updatedItems || []).find((item) => String(item.id) === String(choice.item.id))) }, hero: { before: beforeHero, after: null } });
-      log(`${hero.name} 使用 ${choice.item.name} 後未回傳角色資料，已自動進入休息`, accountId); return false;
+      log(`${hero.name} 使用 ${choice.item.name} 後未回傳角色資料，${recoveryFailureAction}`, accountId); return false;
     }
     state.heroes = mergeHeroes(state.heroes, [updatedHero]);
     let afterItem = itemById(choice.item.id, accountId);
@@ -1758,13 +1782,13 @@ async function tryUseRecoveryItems(c, accountId) {
           state.recoveryFallbackHeroes.delete(String(hero.id));
         }
         createItemRecoveryIncident(accountId, "inventory-not-decreased", "補品使用後重新讀取背包，庫存仍未減少", { item: { itemId: beforeItem.itemId, before: beforeItem, response: itemRecoverySnapshot((updatedItems || []).find((item) => String(item.id) === String(choice.item.id))), refresh: itemRecoverySnapshot(afterItem) }, hero: { before: beforeHero, after: heroRecoverySnapshot(updatedHero) } });
-        log(`${hero.name} 使用 ${choice.item.name} 後庫存未減少；重新讀取背包後仍未扣除，已自動進入休息`, accountId); return false;
+        log(`${hero.name} 使用 ${choice.item.name} 後庫存未減少；重新讀取背包後仍未扣除，${recoveryFailureAction}`, accountId); return false;
       }
     }
     if (Number(updatedHero.hp) <= before.hp && Number(updatedHero.sp) <= before.sp) {
       if (!interceptItemRecoveryIssue) return true;
       createItemRecoveryIncident(accountId, "vitals-not-increased", "補品庫存已消耗但 HP／SP 未增加", { item: { itemId: beforeItem.itemId, before: beforeItem, response: itemRecoverySnapshot(afterItem) }, hero: { before: beforeHero, after: heroRecoverySnapshot(updatedHero) } });
-      log(`${hero.name} 使用 ${choice.item.name} 後 HP／SP 未增加，已自動進入休息`, accountId); return false;
+      log(`${hero.name} 使用 ${choice.item.name} 後 HP／SP 未增加，${recoveryFailureAction}`, accountId); return false;
     }
     operation(accountId, "item.used", { heroId: hero.id, heroName: hero.name, itemId: choice.item.id, itemName: choice.item.name, source: choice.source, fallback: choice.fallback === true, before, after: { hp: updatedHero.hp, sp: updatedHero.sp, quantity: afterQuantity } });
     const fallbackText = choice.fallback ? "；指定補品不可用，已改用全隊預設" : choice.source === "team" ? "；使用全隊預設" : "";
@@ -1781,7 +1805,7 @@ function schedule(ms, accountId) {
   state.nextWakeAt = Date.now() + Math.max(1000, ms);
   operation(accountId, "runner.scheduled", { delayMs: Math.max(1000, ms), nextWakeAt: new Date(state.nextWakeAt).toISOString() });
   debug(accountId, "runner.scheduled", { delayMs: Math.max(1000, ms), nextWakeAt: new Date(state.nextWakeAt).toISOString() });
-  state.timer = setTimeout(() => turn(accountId), Math.max(1000, ms));
+  state.timer = setTimeout(() => { void turn(accountId).catch((error) => warn(`自動狩獵排程執行失敗：${error.message || error}`, accountId)); }, Math.max(1000, ms));
 }
 function warn(message, accountId = activeId) {
   if (accountId === activeId) { $("alert").textContent = message; $("alert").hidden = false; document.title = `⚠ ${message} | Autoy`; }
@@ -2043,7 +2067,7 @@ function renderEquipSettings(accountId = activeId) {
   const enabled = settings.equipAutoSwap === true;
   const threshold = settings.equipDurThreshold ?? 100;
   const heroSettings = settings.heroEquipSettings || {};
-  const allTypes = [...new Set(equipments.map((e) => e.type).filter(Boolean))].sort();
+  const allTypes = [...new Set(equipments.map((e) => e.type).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "zh-Hant"));
   const pickPriority = settings.equipPickPriority || "dur_asc";
   const pickPriorityHintMap = { dur_asc: "耐久最低優先", atk_desc: "攻擊最高優先", def_desc: "防禦最高優先", dur_desc: "耐久最高優先" };
 
@@ -2170,6 +2194,8 @@ async function hunt(c, accountId) {
   const atTown = party.every((hero) => Number(hero.huntZone) === 0 && Number(hero.huntStage) === 0);
   const atGrassland = party.every((hero) => Number(hero.huntZone) === 1 && Number(hero.huntStage) >= 1);
   const atSecretPath = party.every((hero) => Number(hero.huntZone) === 10002);
+  const atMistyForest = party.every((hero) => Number(hero.huntZone) === 10003);
+  const atSwamp = party.every((hero) => Number(hero.huntZone) === 10004);
   const atBullPlains = party.every((hero) => Number(hero.huntZone) === 10001);
   const atDarkCave = party.every((hero) => Number(hero.huntZone) === 2 && Number(hero.huntStage) >= 1);
   const atRockCave = party.every((hero) => Number(hero.huntZone) === 20001 && Number(hero.huntStage) >= 1);
@@ -2179,20 +2205,22 @@ async function hunt(c, accountId) {
   if (atDarkCave && targetZone !== "dark-cave" && targetZone !== "bat-cave-rock-cave") { await beginHuntReturnToTown(accountId, targetZoneId); return; }
   if (atGrassland && targetZone === "dark-cave") { await beginHuntReturnToTown(accountId, 2); return; }
   if (atGrassland && targetZone === "bat-cave-rock-cave") { await beginHuntReturnToTown(accountId, 2); return; }
-  if (atSecretPath && targetZone !== "secret-path") { await beginHuntReturnToTown(accountId, targetZoneId); return; }
-  if (atBullPlains && targetZone !== "bull-plains") { await beginHuntReturnToTown(accountId, targetZoneId); return; }
+  if (atSecretPath && targetZone !== "secret-path" && targetZone !== "misty-forest") { await beginHuntReturnToTown(accountId, targetZoneId); return; }
+  if (atMistyForest && targetZone !== "misty-forest") { await beginHuntReturnToTown(accountId, targetZoneId); return; }
+  if (atSwamp && targetZone !== "swamp") { await beginHuntReturnToTown(accountId, targetZoneId); return; }
+  if (atBullPlains && targetZone !== "bull-plains" && targetZone !== "swamp") { await beginHuntReturnToTown(accountId, targetZoneId); return; }
   if (atRockCave && targetZone !== "bat-cave-rock-cave") { await beginHuntReturnToTown(accountId, targetZoneId); return; }
-  if (!atGrassland && !atSecretPath && !atBullPlains && !atDarkCave && !atRockCave) throw new Error("出戰隊伍不在已驗證的狩獵地圖或位置不一致；請重新讀取確認");
-  if (atGrassland && (targetZone === "secret-path" || targetZone === "bull-plains")) {
-    const forkZoneId = targetZone === "secret-path" ? 10002 : 10001;
-    const forkZoneName = targetZone === "secret-path" ? "草原秘徑" : "猛牛原";
-    const forkPath = (state.huntPaths || []).find((p) => Number(p.zoneId) === forkZoneId);
-    if (forkPath) { await beginHuntEnterForkPath(accountId, forkZoneId); return; }
-    const cooldownWaitMs = state.cooldownAt - Date.now();
-    if (cooldownWaitMs > 0) { debug(accountId, "hunt.cooldown", { cooldownAt: new Date(state.cooldownAt).toISOString(), waitMs: cooldownWaitMs }); return schedule(cooldownWaitMs, accountId); }
-    const forkFloor = targetZone === "secret-path" ? 16 : 11;
+  if (!atGrassland && !atSecretPath && !atMistyForest && !atSwamp && !atBullPlains && !atDarkCave && !atRockCave) throw new Error("出戰隊伍不在已驗證的狩獵地圖或位置不一致；請重新讀取確認");
+  if (atGrassland && (targetZone === "secret-path" || targetZone === "misty-forest" || targetZone === "bull-plains" || targetZone === "swamp")) {
+    const forkZoneId = targetZone === "bull-plains" || targetZone === "swamp" ? 10001 : 10002;
+    const forkZoneName = targetZone === "bull-plains" ? "猛牛原" : targetZone === "swamp" ? "猛牛原（前往沼澤地）" : targetZone === "misty-forest" ? "草原秘徑（前往迷霧森林）" : "草原秘徑";
+    const forkFloor = targetZone === "bull-plains" || targetZone === "swamp" ? 11 : 16;
     const currentFloor = Number(party[0]?.huntStage);
     if (!Number.isInteger(currentFloor)) throw new Error("找不到出戰隊伍目前樓層");
+    const forkPath = (state.huntPaths || []).find((p) => Number(p.zoneId) === forkZoneId);
+    if (currentFloor >= forkFloor && forkPath) { await beginHuntEnterForkPath(accountId, forkZoneId); return; }
+    const cooldownWaitMs = state.cooldownAt - Date.now();
+    if (cooldownWaitMs > 0) { debug(accountId, "hunt.cooldown", { cooldownAt: new Date(state.cooldownAt).toISOString(), waitMs: cooldownWaitMs }); return schedule(cooldownWaitMs, accountId); }
     const useForward = state.canForward === true && currentFloor < forkFloor;
     log(`前往${forkZoneName}途中：大草原 ${currentFloor} 層，canForward=${state.canForward} → ${useForward ? "前行" : "原地狩獵"}`, accountId);
     debug(accountId, "hunt.start", { action: useForward ? "forward" : "stay", note: `前往${forkZoneName}途中`, canForward: state.canForward, party: partyDebug(party) });
@@ -2203,21 +2231,71 @@ async function hunt(c, accountId) {
     state.heroes = mergeHeroes(state.heroes, info.heroes || []);
     state.canForward = info.canForward ?? state.canForward;
     state.cooldownAt = localCooldownAt(info.huntAvailableAt, state);
-    if (info.paths) state.huntPaths = info.paths;
+    state.huntPaths = Array.isArray(info.paths) ? info.paths : [];
     if (accountId === activeId) renderHeroes(accountId);
     log(`${useForward ? "前行" : "原地"}狩獵完成（前往${forkZoneName}途中）`, accountId);
     await checkAndSwapEquipments(c, accountId, result);
     scheduleHunt(T_send, T_recv, c, accountId);
     return;
   }
-  if (atDarkCave && targetZone === "bat-cave-rock-cave") {
-    const forkZoneId = 20001;
-    const forkPath = (state.huntPaths || []).find((p) => Number(p.zoneId) === forkZoneId);
-    if (forkPath) { await beginHuntEnterForkPath(accountId, forkZoneId); return; }
-    const cooldownWaitMs = state.cooldownAt - Date.now();
-    if (cooldownWaitMs > 0) { debug(accountId, "hunt.cooldown", { cooldownAt: new Date(state.cooldownAt).toISOString(), waitMs: cooldownWaitMs }); return schedule(cooldownWaitMs, accountId); }
+  if (atBullPlains && targetZone === "swamp") {
+    const forkZoneId = 10004;
     const current = Number(party[0]?.huntStage);
     if (!Number.isInteger(current)) throw new Error("找不到出戰隊伍目前樓層");
+    const forkPath = (state.huntPaths || []).find((p) => Number(p.zoneId) === forkZoneId);
+    if (current >= 27 && forkPath) { await beginHuntEnterForkPath(accountId, forkZoneId); return; }
+    const cooldownWaitMs = state.cooldownAt - Date.now();
+    if (cooldownWaitMs > 0) { debug(accountId, "hunt.cooldown", { cooldownAt: new Date(state.cooldownAt).toISOString(), waitMs: cooldownWaitMs }); return schedule(cooldownWaitMs, accountId); }
+    const useForward = state.canForward === true && current < 27;
+    log(`前往沼澤地途中：猛牛原第 ${current} 層，canForward=${state.canForward}，執行${useForward ? "前進" : "原地狩獵"}`, accountId);
+    debug(accountId, "hunt.start", { action: useForward ? "forward" : "stay", note: "前往沼澤地途中", canForward: state.canForward, party: partyDebug(party) });
+    const T_send = Date.now();
+    const result = await request(useForward ? "/hunt?type=forward" : "/hunt", { method: "POST" }, accountId);
+    const T_recv = Date.now();
+    const info = result.huntInfo || {};
+    state.heroes = mergeHeroes(state.heroes, info.heroes || []);
+    state.canForward = info.canForward ?? state.canForward;
+    state.cooldownAt = localCooldownAt(info.huntAvailableAt, state);
+    state.huntPaths = Array.isArray(info.paths) ? info.paths : [];
+    if (accountId === activeId) renderHeroes(accountId);
+    log(`${useForward ? "前進" : "原地"}狩獵已完成，繼續前往沼澤地`, accountId);
+    await checkAndSwapEquipments(c, accountId, result);
+    scheduleHunt(T_send, T_recv, c, accountId);
+    return;
+  }
+  if (atSecretPath && targetZone === "misty-forest") {
+    const forkZoneId = 10003;
+    const current = Number(party[0]?.huntStage);
+    if (!Number.isInteger(current)) throw new Error("找不到出戰隊伍目前樓層");
+    const forkPath = (state.huntPaths || []).find((p) => Number(p.zoneId) === forkZoneId);
+    if (current >= 27 && forkPath) { await beginHuntEnterForkPath(accountId, forkZoneId); return; }
+    const cooldownWaitMs = state.cooldownAt - Date.now();
+    if (cooldownWaitMs > 0) { debug(accountId, "hunt.cooldown", { cooldownAt: new Date(state.cooldownAt).toISOString(), waitMs: cooldownWaitMs }); return schedule(cooldownWaitMs, accountId); }
+    const useForward = state.canForward === true && current < 27;
+    log(`前往迷霧森林途中：草原秘徑第 ${current} 層，canForward=${state.canForward}，執行${useForward ? "前進" : "原地狩獵"}`, accountId);
+    debug(accountId, "hunt.start", { action: useForward ? "forward" : "stay", note: "前往迷霧森林途中", canForward: state.canForward, party: partyDebug(party) });
+    const T_send = Date.now();
+    const result = await request(useForward ? "/hunt?type=forward" : "/hunt", { method: "POST" }, accountId);
+    const T_recv = Date.now();
+    const info = result.huntInfo || {};
+    state.heroes = mergeHeroes(state.heroes, info.heroes || []);
+    state.canForward = info.canForward ?? state.canForward;
+    state.cooldownAt = localCooldownAt(info.huntAvailableAt, state);
+    state.huntPaths = Array.isArray(info.paths) ? info.paths : [];
+    if (accountId === activeId) renderHeroes(accountId);
+    log(`${useForward ? "前進" : "原地"}狩獵已完成，繼續前往迷霧森林`, accountId);
+    await checkAndSwapEquipments(c, accountId, result);
+    scheduleHunt(T_send, T_recv, c, accountId);
+    return;
+  }
+  if (atDarkCave && targetZone === "bat-cave-rock-cave") {
+    const forkZoneId = 20001;
+    const current = Number(party[0]?.huntStage);
+    if (!Number.isInteger(current)) throw new Error("找不到出戰隊伍目前樓層");
+    const forkPath = (state.huntPaths || []).find((p) => Number(p.zoneId) === forkZoneId);
+    if (current >= 14 && forkPath) { await beginHuntEnterForkPath(accountId, forkZoneId); return; }
+    const cooldownWaitMs = state.cooldownAt - Date.now();
+    if (cooldownWaitMs > 0) { debug(accountId, "hunt.cooldown", { cooldownAt: new Date(state.cooldownAt).toISOString(), waitMs: cooldownWaitMs }); return schedule(cooldownWaitMs, accountId); }
     const useForward = state.canForward === true && current < 14;
     log(`前往岩洞途中：黑暗山洞 ${current} 層，canForward=${state.canForward} → ${useForward ? "前行" : "原地狩獵"}`, accountId);
     debug(accountId, "hunt.start", { action: useForward ? "forward" : "stay", note: "前往岩洞途中", canForward: state.canForward, party: partyDebug(party) });
@@ -2228,7 +2306,7 @@ async function hunt(c, accountId) {
     state.heroes = mergeHeroes(state.heroes, info.heroes || []);
     state.canForward = info.canForward ?? state.canForward;
     state.cooldownAt = localCooldownAt(info.huntAvailableAt, state);
-    if (info.paths) state.huntPaths = info.paths;
+    state.huntPaths = Array.isArray(info.paths) ? info.paths : [];
     if (accountId === activeId) renderHeroes(accountId);
     log(`${useForward ? "前行" : "原地"}狩獵完成（前往岩洞途中）`, accountId);
     await checkAndSwapEquipments(c, accountId, result);
@@ -2253,7 +2331,7 @@ async function hunt(c, accountId) {
   state.heroes = mergeHeroes(state.heroes, updates);
   state.canForward = result.huntInfo?.canForward ?? state.canForward;
   state.cooldownAt = localCooldownAt(result.huntInfo?.huntAvailableAt, state);
-  if (result.huntInfo?.paths) state.huntPaths = result.huntInfo.paths;
+  state.huntPaths = Array.isArray(result.huntInfo?.paths) ? result.huntInfo.paths : [];
   if (accountId === activeId) renderHeroes(accountId);
   log(forward ? "前行狩獵完成" : "原地狩獵完成", accountId);
   await checkAndSwapEquipments(c, accountId, result);
@@ -2299,17 +2377,28 @@ async function turn(accountId) {
     }
     if (party.some((hero) => Number(hero.actionState) === 2)) { operation(accountId, "runner.branch", { branch: "rest-existing" }); debug(accountId, "runner.branch", { branch: "rest-existing" }); await rest(c, accountId); return; }
     if (party.some((hero) => Number(hero.actionState) !== 0)) throw new Error("勾選出戰隊伍有移動或未識別行動；請先完成並重新讀取");
-    if (needsRest(c, accountId)) state.itemRecoveryActive = true;
-    if (state.itemRecoveryActive && restComplete(c, accountId)) {
+    const safetyStage = secretPathSafetyStage(c, accountId);
+    const stageSafety = safetyStage !== null;
+    const recoveryConfig = stageSafety ? fullRecoveryConfig(c) : c;
+    const needsSafetyRecovery = stageSafety && !restComplete(recoveryConfig, accountId);
+    if (needsSafetyRecovery && !state.itemRecoveryActive) log(`偵測到第 ${safetyStage} 層，開始強制補滿 HP／SP`, accountId);
+    if (needsSafetyRecovery || (!stageSafety && needsRest(c, accountId))) state.itemRecoveryActive = true;
+    if (state.itemRecoveryActive && restComplete(recoveryConfig, accountId)) {
       state.itemRecoveryActive = false; state.recoveryFallbackHeroes.clear();
-      log(`補品恢復完成，全隊達到 HP ${c.restHp}%／SP ${c.restSp}%`, accountId);
+      log(`補品恢復完成，全隊達到 HP ${recoveryConfig.restHp}%／SP ${recoveryConfig.restSp}%`, accountId);
     }
     if (state.itemRecoveryActive) {
       if (c.useItems) {
-        operation(accountId, "runner.branch", { branch: "item-recovery" });
-        debug(accountId, "runner.branch", { branch: "item-recovery" });
-        const used = await tryUseRecoveryItems(c, accountId);
+        const branch = stageSafety ? `secret-path-stage${safetyStage}-safety-recovery` : "item-recovery";
+        operation(accountId, "runner.branch", { branch });
+        debug(accountId, "runner.branch", { branch });
+        const used = await tryUseRecoveryItems(recoveryConfig, accountId, { strict: stageSafety });
         if (used) { schedule(1000, accountId); return; }
+      }
+      if (stageSafety) {
+        state.itemRecoveryActive = false;
+        const safetyReason = c.useItems ? fullRecoveryNeedText(c, accountId) || "請確認 HP／SP 補品仍可使用" : "請在補品設定啟用「使用補品」，並設定可用的 HP／SP 補品";
+        throw new Error(`草原秘徑第 ${safetyStage} 層安全補給未完成，禁止開始戰鬥：${safetyReason}`);
       }
       operation(accountId, "runner.branch", { branch: "rest-needed" }); debug(accountId, "runner.branch", { branch: "rest-needed" }); await rest(c, accountId);
     }
@@ -2321,7 +2410,7 @@ async function turn(accountId) {
         state.captchaRestCount = (state.captchaRestCount || 0) + 1;
         state.captchaRestLastAt = Date.now();
         if (state.captchaRestCount >= (hc.captchaRestThreshold || 5)) {
-          const pauseMs = (10 + Math.floor(Math.random() * 21)) * 60000;
+          const pauseMs = (10 + secureRandomInt(21)) * 60000;
           const pauseMin = Math.round(pauseMs / 60000);
           const wasForgeRunning = state.forgeRunning;
           log(`擬人模式：驗證碼次數達上限（${state.captchaRestCount} 次），休息 ${pauseMin} 分鐘後自動重啟`, accountId);
@@ -2344,7 +2433,7 @@ async function turn(accountId) {
       }
       state.captchaSolving = true;
       try {
-        const preWaitMs = 3000 + Math.floor(Math.random() * 5001);
+        const preWaitMs = 3000 + secureRandomInt(5001);
         log(`偵測到驗證要求，等待 ${(preWaitMs / 1000).toFixed(1)}s 後處理...`, accountId);
         await new Promise((r) => setTimeout(r, preWaitMs));
         const captchaInfo = await request("/captcha", {}, accountId);
@@ -2354,7 +2443,7 @@ async function turn(accountId) {
           log(`圖形驗證自動解題：${config(accountId).autoHcaptchaSolve ? "已啟用" : "未啟用"}`, accountId);
           if (config(accountId).autoHcaptchaSolve) {
             const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
-            if (solved === true) { log("hCaptcha 驗證通過，繼續自動狩獵", accountId); if (state.forgePausedForCaptcha) { state.forgePausedForCaptcha = false; log("自動鍛造已重啟", accountId); setForgeEnabled(accountId, true); } schedule(2000 + Math.floor(Math.random() * 6001), accountId); return; }
+            if (solved === true) { log("hCaptcha 驗證通過，繼續自動狩獵", accountId); if (state.forgePausedForCaptcha) { state.forgePausedForCaptcha = false; log("自動鍛造已重啟", accountId); setForgeEnabled(accountId, true); } schedule(2000 + secureRandomInt(6001), accountId); return; }
             if (solved === "paused") return;
             log("hCaptcha 驗證未通過，停止自動狩獵與自動鍛造", accountId);
           } else {
@@ -2362,7 +2451,7 @@ async function turn(accountId) {
           }
         } else if (config(accountId).autoCaptchaVerify && challengeId != null) {
           const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, checked: true }) }, accountId);
-          if (verifyResult?.ok === true) { log("非圖形驗證通過，繼續自動狩獵", accountId); if (state.forgePausedForCaptcha) { state.forgePausedForCaptcha = false; log("自動鍛造已重啟", accountId); setForgeEnabled(accountId, true); } schedule(2000 + Math.floor(Math.random() * 6001), accountId); return; }
+          if (verifyResult?.ok === true) { log("非圖形驗證通過，繼續自動狩獵", accountId); if (state.forgePausedForCaptcha) { state.forgePausedForCaptcha = false; log("自動鍛造已重啟", accountId); setForgeEnabled(accountId, true); } schedule(2000 + secureRandomInt(6001), accountId); return; }
           log("非圖形驗證未通過，停止自動狩獵與自動鍛造", accountId);
         } else {
           log("偵測到活人驗證，已停止自動狩獵與自動鍛造", accountId);
@@ -2394,7 +2483,7 @@ function startRunner(accountId) {
     const settings = config(accountId);
     if (state.running && state.nextWakeAt && Date.now() > state.nextWakeAt + settings.alertMinutes * 60000) stopRunner(accountId, "超過無動作提醒時間，已停止");
   }, 30000);
-  renderAccounts(); log("開始此帳號自動狩獵；先檢查出戰名單與目前行動", accountId); turn(accountId);
+  renderAccounts(); log("開始此帳號自動狩獵；先檢查出戰名單與目前行動", accountId); void turn(accountId).catch((error) => warn(`自動狩獵執行失敗：${error.message || error}`, accountId));
 }
 function stopAll() {
   const runningAccounts = accounts.filter((account) => runtimeFor(account.id).running);
@@ -2439,20 +2528,20 @@ function initAccountEvents() {
   $("stop").onclick = () => stopRunner(activeId);
   const stopAllButton = $("stop-all"); if (stopAllButton) stopAllButton.onclick = stopAll;
   $("clear-events").onclick = () => { const state = runtimeFor(activeId); state.messages = []; renderFlowMessages(activeId); };
-  $("copy-events").onclick = () => copyText($("events").textContent, "流程訊息已複製");
+  $("copy-events").onclick = () => { void copyText($("events").textContent, "流程訊息已複製"); };
   $("clear-operations").onclick = () => { const state = runtimeFor(activeId); state.operations = []; renderOperations(activeId); };
-  $("copy-operations").onclick = () => copyText(JSON.stringify(runtimeFor(activeId).operations, null, 2), "操作紀錄 JSON 已複製");
+  $("copy-operations").onclick = () => { void copyText(JSON.stringify(runtimeFor(activeId).operations, null, 2), "操作紀錄 JSON 已複製"); };
   $("open-flow").onclick = () => { renderFlowMessages(activeId); openDialog("flow-card"); };
   $("open-operations").onclick = () => { renderOperations(activeId); openDialog("operation-card"); };
   $("open-item-recovery-incidents").onclick = () => { renderItemRecoveryIncidents(); openDialog("item-recovery-incidents"); };
-  $("copy-item-recovery-incidents").onclick = () => copyText(JSON.stringify(itemRecoveryIncidents.filter((entry) => entry.accountRef === String(activeId)), null, 2), "補品異常 JSON 已複製");
+  $("copy-item-recovery-incidents").onclick = () => { void copyText(JSON.stringify(itemRecoveryIncidents.filter((entry) => entry.accountRef === String(activeId)), null, 2), "補品異常 JSON 已複製"); };
   $("clear-item-recovery-incidents").onclick = () => {
     if (!window.confirm("只會清除目前帳號的補品異常紀錄，不影響帳號、補品設定或操作紀錄。確定清除？")) return;
     itemRecoveryIncidents = itemRecoveryIncidents.filter((entry) => entry.accountRef !== String(activeId)); saveItemRecoveryIncidents(); renderItemRecoveryIncidents();
   };
 
   $("open-forge-debug").onclick = () => { renderForgeDebugLogs(); openDialog("forge-debug-dialog"); };
-  $("copy-forge-debug").onclick = () => copyText(JSON.stringify(forgeDebugLogs.filter((entry) => entry.accountRef === String(activeId)), null, 2), "鍛造除錯 JSON 已複製");
+  $("copy-forge-debug").onclick = () => { void copyText(JSON.stringify(forgeDebugLogs.filter((entry) => entry.accountRef === String(activeId)), null, 2), "鍛造除錯 JSON 已複製"); };
   $("clear-forge-debug").onclick = () => {
     if (!window.confirm("只會清除目前帳號的鍛造除錯紀錄，不影響鍛造設定、補品設定或自動狩獵。確定清除？")) return;
     forgeDebugLogs = forgeDebugLogs.filter((entry) => entry.accountRef !== String(activeId)); saveForgeDebugLogs(); renderForgeDebugLogs();
@@ -2465,39 +2554,65 @@ function initAccountEvents() {
     const stage = Number($("target-stage")?.value);
     const warning = $("hunt-zone-warning");
     if (warning) warning.hidden = !(zone === "secret-path" && stage < 16);
-    const stage25Warning = $("hunt-zone-stage25-warning");
-    if (stage25Warning) stage25Warning.hidden = !(zone === "secret-path" && stage >= 25);
+    const targetInput = $("target-stage");
+    const maxStage = HUNT_ZONE_MAX_STAGES[zone];
+    if (targetInput) {
+      if (maxStage != null) targetInput.max = String(maxStage);
+      else targetInput.removeAttribute("max");
+    }
+    const maxStageWarning = $("hunt-zone-max-stage-warning");
+    if (maxStageWarning) {
+      maxStageWarning.hidden = !(maxStage != null && stage > maxStage);
+      maxStageWarning.textContent = `${HUNT_ZONE_LABELS[zone] || zone}最高只有第 ${maxStage} 層，目標樓層請設為第 ${maxStage} 層或以下。`;
+    }
+    const secretPathDangerWarning = $("hunt-zone-danger-stage-warning");
+    if (secretPathDangerWarning) secretPathDangerWarning.hidden = !((zone === "secret-path" || zone === "misty-forest") && stage >= 25);
     const bullPlainsWarning = $("hunt-zone-bull-plains-warning");
     if (bullPlainsWarning) bullPlainsWarning.hidden = !(zone === "bull-plains" && stage < 11);
+    const swampWarning = $("hunt-zone-swamp-warning");
+    if (swampWarning) swampWarning.hidden = !(zone === "swamp" && stage < 27);
     const rockCaveWarning = $("hunt-zone-rock-cave-warning");
     if (rockCaveWarning) rockCaveWarning.hidden = !(zone === "bat-cave-rock-cave" && stage < 14);
+    const mistyForestWarning = $("hunt-zone-misty-forest-warning");
+    if (mistyForestWarning) mistyForestWarning.hidden = !(zone === "misty-forest" && stage < 27);
   }
   $("hunt-zone-select").addEventListener("change", () => {
     const val = $("hunt-zone-select").value;
     const party = selectedParty(activeId);
     if (party.length > 0) {
       const inSecretPath = party.every((h) => Number(h.huntZone) === 10002);
+      const inMistyForest = party.every((h) => Number(h.huntZone) === 10003);
+      const inSwamp = party.every((h) => Number(h.huntZone) === 10004);
       const inBullPlains = party.every((h) => Number(h.huntZone) === 10001);
       const inDarkCave = party.every((h) => Number(h.huntZone) === 2);
       const inRockCave = party.every((h) => Number(h.huntZone) === 20001);
-      const ZONE_LABELS = { grassland: "大草原", "secret-path": "草原秘徑", "bull-plains": "猛牛原", "dark-cave": "黑暗山洞", "bat-cave-rock-cave": "蝙蝠洞→岩洞" };
-      if (inSecretPath && val !== "secret-path") {
-        if (!window.confirm(`目前在草原秘徑，切換為${ZONE_LABELS[val] || val}將自動回程至城鎮，確定嗎？`)) {
+      if (inSecretPath && val !== "secret-path" && val !== "misty-forest") {
+        if (!window.confirm(`目前在草原秘徑，切換為${HUNT_ZONE_LABELS[val] || val}將自動回程至城鎮，確定嗎？`)) {
           $("hunt-zone-select").value = "secret-path";
           return;
         }
-      } else if (inBullPlains && val !== "bull-plains") {
-        if (!window.confirm(`目前在猛牛原，切換為${ZONE_LABELS[val] || val}將自動回程至城鎮，確定嗎？`)) {
+      } else if (inMistyForest && val !== "misty-forest") {
+        if (!window.confirm(`目前在迷霧森林，切換為${HUNT_ZONE_LABELS[val] || val}將自動回程至城鎮，確定嗎？`)) {
+          $("hunt-zone-select").value = "misty-forest";
+          return;
+        }
+      } else if (inSwamp && val !== "swamp") {
+        if (!window.confirm(`目前在沼澤地，切換為${HUNT_ZONE_LABELS[val] || val}將自動回程至城鎮，確定嗎？`)) {
+          $("hunt-zone-select").value = "swamp";
+          return;
+        }
+      } else if (inBullPlains && val !== "bull-plains" && val !== "swamp") {
+        if (!window.confirm(`目前在猛牛原，切換為${HUNT_ZONE_LABELS[val] || val}將自動回程至城鎮，確定嗎？`)) {
           $("hunt-zone-select").value = "bull-plains";
           return;
         }
       } else if (inDarkCave && val !== "dark-cave" && val !== "bat-cave-rock-cave") {
-        if (!window.confirm(`目前在黑暗山洞，切換為${ZONE_LABELS[val] || val}將自動回程至城鎮，確定嗎？`)) {
+        if (!window.confirm(`目前在黑暗山洞，切換為${HUNT_ZONE_LABELS[val] || val}將自動回程至城鎮，確定嗎？`)) {
           $("hunt-zone-select").value = "dark-cave";
           return;
         }
       } else if (inRockCave && val !== "bat-cave-rock-cave") {
-        if (!window.confirm(`目前在岩洞，切換為${ZONE_LABELS[val] || val}將自動回程至城鎮，確定嗎？`)) {
+        if (!window.confirm(`目前在岩洞，切換為${HUNT_ZONE_LABELS[val] || val}將自動回程至城鎮，確定嗎？`)) {
           $("hunt-zone-select").value = "bat-cave-rock-cave";
           return;
         }
@@ -2526,7 +2641,7 @@ function init() {
   $("reset-nonecap-usage")?.addEventListener("click", () => { saveNonecapUsage({}); renderNonecapUsage(); });
   if (active()) loadSettings();
   render();
-  if (active()) loadAccountSnapshot(activeId);
+  if (active()) void loadAccountSnapshot(activeId).catch((error) => warn(`讀取帳號快照失敗：${error.message || error}`, activeId));
   const pendingReverifyMs = 10 * 60 * 1000;
   const now = Date.now();
   for (const incident of itemRecoveryIncidents) {
