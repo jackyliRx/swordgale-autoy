@@ -22,7 +22,6 @@
 | 前往大草原－完成行動 | `POST /api/move/complete` | [前往大草原－完成行動](前往大草原-完成行動.md) | `前往大草原-完成行動.json` |
 | 活人驗證 | `GET /api/captcha`、`POST /api/captcha/verify` | [活人驗證](活人驗證.md) | `tools/活人驗證.json` |
 | 鍛造－英雄與背包狀態 | `GET /api/profile`、`GET /api/heroes`、`GET /api/items`、`GET /api/heroes/{id}/statuses` | [鍛造－英雄與背包狀態](鍛造-英雄與背包狀態.md) | `autoy-api-recorder-2026-10-01T02-35-58-528Z.json` |
-| 草原秘徑帳號快照補充 | 帳號快照與驗證相關讀取 | [草原秘徑帳號快照](草原秘徑-帳號快照.md) | 原始 JSON 已刪除 |
 | 草原秘徑進入迷霧森林 | `POST /api/hunt?type=forward`、`POST /api/moveForkPath/10003` | [草原秘徑－迷霧森林](草原秘徑-迷霧森林.md) | `autoy-api-recorder-2026-10-20T03-22-34-466Z.json` |
 | 猛牛原進入沼澤地 | `POST /api/hunt?type=forward`、`POST /api/moveForkPath/10004`、`POST /api/move/0` | [猛牛原－沼澤地](猛牛原-沼澤地.md) | `autoy-api-recorder-2026-10-20T05-21-36-106Z.json` |
 
