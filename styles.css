@@ -75,3 +75,6 @@ label { display:grid; gap:5px; font-size:.86rem; } .account { display:flex; just
 .recipe-material-add { display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; } .recipe-material-add label { flex:1; min-width:160px; }
 @media (max-width: 780px) { main { padding:14px; } .workspace { grid-template-columns:1fr; } .sidebar { position:static; max-height:none; } .sidebar .heroes { grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); } .account { align-items:stretch; flex-direction:column; } .account-actions { justify-items:start; } .account-actions .actions { justify-content:flex-start; } .item-grid { grid-template-columns:1fr; } .item-hero-row { grid-template-columns:1fr; } .item-hero-row > span { padding-bottom:0; } }
 @media (max-width: 780px) { .report-layout { grid-template-columns:1fr; } .report-list,.report-detail { max-height:280px; } }
+.operation-list { max-height:calc(100vh - 190px); overflow:auto; color:#b9d7f5; }
+.operation-entry { max-height:none; overflow:visible; padding:10px 0; border-bottom:1px solid #344250; }
+.operation-entry:last-child { border-bottom:0; }
