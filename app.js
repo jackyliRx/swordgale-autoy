@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.9.1";
+const uiVersion = "0.9.2";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -783,13 +783,13 @@ async function fillForgeHeroSp(accountId, workshop, hero) {
   const fullSp = Number(hero.fullSp);
   let currentSp = Number(hero.sp);
   if (currentSp >= fullSp) return;
-  const maxPerUse = Number(item.maxUseQuantity) || 10;
+  const maxPerUse = Number(item.maxUseQuantity);
   let used = 0;
   while (currentSp < fullSp) {
     const available = itemQuantity(itemById(item.id, accountId));
     if (available <= 0) break;
     const needed = Math.ceil((fullSp - currentSp) / Number(item.healSp));
-    const quantity = needed >= maxPerUse ? Math.min(maxPerUse, available) : 1;
+    const quantity = Math.min(needed, available, Number.isInteger(maxPerUse) && maxPerUse > 0 ? maxPerUse : needed);
     try {
       const result = await request(`/items/${encodeURIComponent(item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity, heroId: hero.id }) }, accountId);
       used += quantity;
@@ -1686,7 +1686,6 @@ function recoveryUnavailableReason(hero, c, accountId) {
   return "沒有可用補品";
 }
 function calcUseQuantity(item, hero, c) {
-  const maxPerUse = 10;
   const available = itemQuantity(item);
   const healHp = Number(item?.healHp) || 0;
   const healSp = Number(item?.healSp) || 0;
@@ -1695,7 +1694,9 @@ function calcUseQuantity(item, hero, c) {
   const hpNeeded = healHp > 0 && hpGap > 0 ? Math.ceil(hpGap / healHp) : 0;
   const spNeeded = healSp > 0 && spGap > 0 ? Math.ceil(spGap / healSp) : 0;
   const needed = Math.max(hpNeeded, spNeeded);
-  return needed >= maxPerUse && available >= maxPerUse ? maxPerUse : 1;
+  const maxUseQuantity = Number(item?.maxUseQuantity);
+  const itemLimit = Number.isInteger(maxUseQuantity) && maxUseQuantity > 0 ? maxUseQuantity : Math.max(1, needed);
+  return Math.min(Math.max(1, needed), available, itemLimit);
 }
 async function tryUseRecoveryItems(c, accountId, { strict = false } = {}) {
   if (!c.useItems || !runtimeFor(accountId).itemRecoveryActive || restComplete(c, accountId)) return false;
@@ -1772,25 +1773,32 @@ async function tryUseRecoveryItems(c, accountId, { strict = false } = {}) {
       log(`${hero.name} 使用 ${choice.item.name} 後未回傳角色資料，${recoveryFailureAction}`, accountId); return false;
     }
     state.heroes = mergeHeroes(state.heroes, [updatedHero]);
+    const vitalsIncreased = Number(updatedHero.hp) > before.hp || Number(updatedHero.sp) > before.sp;
     let afterItem = itemById(choice.item.id, accountId);
     let afterQuantity = afterItem ? itemQuantity(afterItem) : 0;
-    if (afterQuantity > before.quantity - quantity) {
+    let inventoryDecrease = before.quantity - afterQuantity;
+    if (inventoryDecrease < quantity) {
       if (!interceptItemRecoveryIssue) return true;
       await refreshItems(accountId, { force: true });
       afterItem = itemById(choice.item.id, accountId);
       afterQuantity = afterItem ? itemQuantity(afterItem) : 0;
-      if (afterQuantity > before.quantity - quantity) {
+      inventoryDecrease = before.quantity - afterQuantity;
+      if (inventoryDecrease < quantity && !vitalsIncreased) {
         if (choice.source === "hero") {
           state.recoveryFallbackHeroes.add(String(hero.id));
           const fallback = configuredRecoveryItem(hero, c, accountId);
           if (fallback?.source === "team") { log(`${hero.name} 使用 ${choice.item.name} 未確認，下一輪改用全隊預設補品 ${fallback.item.name}`, accountId); return true; }
           state.recoveryFallbackHeroes.delete(String(hero.id));
         }
-        createItemRecoveryIncident(accountId, "inventory-not-decreased", "補品使用後重新讀取背包，庫存仍未減少", { item: { itemId: beforeItem.itemId, before: beforeItem, response: itemRecoverySnapshot((updatedItems || []).find((item) => String(item.id) === String(choice.item.id))), refresh: itemRecoverySnapshot(afterItem) }, hero: { before: beforeHero, after: heroRecoverySnapshot(updatedHero) } });
-        log(`${hero.name} 使用 ${choice.item.name} 後庫存未減少；重新讀取背包後仍未扣除，${recoveryFailureAction}`, accountId); return false;
+        createItemRecoveryIncident(accountId, "inventory-decrement-shortfall", "背包扣除少於請求數量，且角色 HP／SP 未提升", { item: { itemId: beforeItem.itemId, before: beforeItem, requestedQuantity: quantity, response: itemRecoverySnapshot((updatedItems || []).find((item) => String(item.id) === String(choice.item.id))), refresh: itemRecoverySnapshot(afterItem), reportedDecrease: inventoryDecrease }, hero: { before: beforeHero, after: heroRecoverySnapshot(updatedHero) } });
+        log(`${hero.name} 使用 ${choice.item.name} 請求 ${quantity} 件；重新讀取後庫存僅減少 ${Math.max(0, inventoryDecrease)} 件且 HP／SP 未提升，${recoveryFailureAction}`, accountId); return false;
+      }
+      if (inventoryDecrease < quantity && vitalsIncreased) {
+        createItemRecoveryIncident(accountId, "inventory-decrement-shortfall", "角色 HP／SP 已提升，但庫存回報扣除少於請求數量", { item: { itemId: beforeItem.itemId, before: beforeItem, requestedQuantity: quantity, response: itemRecoverySnapshot((updatedItems || []).find((item) => String(item.id) === String(choice.item.id))), refresh: itemRecoverySnapshot(afterItem), reportedDecrease: inventoryDecrease }, hero: { before: beforeHero, after: heroRecoverySnapshot(updatedHero) } });
+        log(`${hero.name} 使用 ${choice.item.name} 請求 ${quantity} 件；角色 HP／SP 已提升，背包回報減少 ${Math.max(0, inventoryDecrease)} 件，視為補品生效並繼續恢復`, accountId);
       }
     }
-    if (Number(updatedHero.hp) <= before.hp && Number(updatedHero.sp) <= before.sp) {
+    if (!vitalsIncreased) {
       if (!interceptItemRecoveryIssue) return true;
       createItemRecoveryIncident(accountId, "vitals-not-increased", "補品庫存已消耗但 HP／SP 未增加", { item: { itemId: beforeItem.itemId, before: beforeItem, response: itemRecoverySnapshot(afterItem) }, hero: { before: beforeHero, after: heroRecoverySnapshot(updatedHero) } });
       log(`${hero.name} 使用 ${choice.item.name} 後 HP／SP 未增加，${recoveryFailureAction}`, accountId); return false;
