@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.9.0";
+const uiVersion = "0.9.1";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -25,7 +25,7 @@ const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
   if (!runtimes.has(id)) {
     const account = accounts.find((entry) => entry.id === id);
-    runtimes.set(id, { heroes: [], equipments: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemsPayload: null, itemsRefreshPromise: null, forgeProfile: null, forgeTypes: [], forgeMines: [], forgeDraft: { workshop: 1, enabled: false, heroId: "", name: "", type: "", selectedMines: [], recoveryItemId: "" }, forgeDataUpdatedAt: 0, forgeRunning: false, forgeTimer: null, forgeWakeAt: 0, forgeBusy: false, forgeLastWait: false, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, stopReason: null, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, huntPaths: [], nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, writeQueue: Promise.resolve(), actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null, captchaSolveCount: 0, captchaThreshold: randomCaptchaThreshold(), captchaSolving: false, forgePausedForCaptcha: false, huntPausedForCaptcha: false, captchaRestCount: 0, captchaRestLastAt: 0 });
+    runtimes.set(id, { heroes: [], equipments: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemsPayload: null, itemsRefreshPromise: null, itemsRefreshGeneration: 0, forgeProfile: null, forgeTypes: [], forgeMines: [], forgeDraft: { workshop: 1, enabled: false, heroId: "", name: "", type: "", selectedMines: [], recoveryItemId: "" }, forgeDataUpdatedAt: 0, forgeRunning: false, forgeTimer: null, forgeWakeAt: 0, forgeBusy: false, forgeLastWait: false, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, stopReason: null, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, huntPaths: [], nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, writeQueue: Promise.resolve(), actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null, captchaSolveCount: 0, captchaThreshold: randomCaptchaThreshold(), captchaSolving: false, forgePausedForCaptcha: false, huntPausedForCaptcha: false, captchaRestCount: 0, captchaRestLastAt: 0 });
   }
   return runtimes.get(id);
 }
@@ -1109,7 +1109,7 @@ function itemRecoveryRuntimeSnapshot(accountId) {
 function scheduleItemRecoveryIncidentVerification(incidentId, itemId, accountId) {
   [1000, 5000, 15000].forEach((delay, index, delays) => window.setTimeout(async () => {
     try {
-      const items = await refreshItems(accountId);
+      const items = await refreshItems(accountId, { force: true });
       const item = (items || []).find((entry) => String(entry.id) === String(itemId));
       const incident = itemRecoveryIncidents.find((entry) => entry.incidentId === incidentId);
       const snapshot = itemRecoverySnapshot(item);
@@ -1134,21 +1134,26 @@ function itemLabel(item) {
   const heals = [Number(item.healHp) > 0 ? `HP +${item.healHp}` : "", Number(item.healSp) > 0 ? `SP +${item.healSp}` : ""].filter(Boolean).join("、");
   return `${item.name}（${heals}，庫存 ${itemQuantity(item)}）`;
 }
-async function refreshItems(accountId = activeId) {
+async function refreshItems(accountId = activeId, { force = false } = {}) {
   const state = runtimeFor(accountId);
-  if (state.itemsRefreshPromise) return state.itemsRefreshPromise;
+  if (state.itemsRefreshPromise && !force) return state.itemsRefreshPromise;
+  const generation = ++state.itemsRefreshGeneration;
   state.itemsRefreshPromise = (async () => {
     const result = await request("/items", {}, accountId);
-    state.itemsPayload = result;
-    state.items = normalizeItems(result) || [];
-    state.itemsUpdatedAt = Date.now();
-    const account = accounts.find((entry) => entry.id === accountId);
-    if (account) { account.itemCatalog = state.items; account.itemsUpdatedAt = state.itemsUpdatedAt; save(); }
-    if (accountId === activeId) renderItemSettings(accountId);
-    return state.items;
+    const items = normalizeItems(result) || [];
+    if (generation === state.itemsRefreshGeneration) {
+      state.itemsPayload = result;
+      state.items = items;
+      state.itemsUpdatedAt = Date.now();
+      const account = accounts.find((entry) => entry.id === accountId);
+      if (account) { account.itemCatalog = state.items; account.itemsUpdatedAt = state.itemsUpdatedAt; save(); }
+      if (accountId === activeId) renderItemSettings(accountId);
+    }
+    return items;
   })();
-  try { return await state.itemsRefreshPromise; }
-  finally { state.itemsRefreshPromise = null; }
+  const refreshPromise = state.itemsRefreshPromise;
+  try { return await refreshPromise; }
+  finally { if (state.itemsRefreshPromise === refreshPromise) state.itemsRefreshPromise = null; }
 }
 function itemSelect(name, value, accountId) {
   const options = [`<option value="">未設定</option>`].concat(recoveryItems(accountId).map((item) => `<option value="${safe(item.id)}" ${String(value || "") === String(item.id) ? "selected" : ""}>${safe(itemLabel(item))}</option>`));
@@ -1720,7 +1725,7 @@ async function tryUseRecoveryItems(c, accountId, { strict = false } = {}) {
       const requestWasAborted = error?.name === "AbortError" || /aborted a request/i.test(String(error?.message || error));
       const stopReason = state.stopReason;
       try {
-        const verifiedItems = await refreshItems(accountId);
+        const verifiedItems = await refreshItems(accountId, { force: true });
         const verifiedItem = (verifiedItems || []).find((item) => String(item.id) === String(choice.item.id));
         if (classifyAbortedItemUse({ beforeQuantity: before.quantity, verifiedQuantity: verifiedItem ? itemQuantity(verifiedItem) : null }) === "consumed") {
           try { await refresh(accountId); } catch { /* Back-pack evidence is sufficient; the normal next cycle refreshes heroes again. */ }
@@ -1771,7 +1776,7 @@ async function tryUseRecoveryItems(c, accountId, { strict = false } = {}) {
     let afterQuantity = afterItem ? itemQuantity(afterItem) : 0;
     if (afterQuantity > before.quantity - quantity) {
       if (!interceptItemRecoveryIssue) return true;
-      await refreshItems(accountId);
+      await refreshItems(accountId, { force: true });
       afterItem = itemById(choice.item.id, accountId);
       afterQuantity = afterItem ? itemQuantity(afterItem) : 0;
       if (afterQuantity > before.quantity - quantity) {
