@@ -1,6 +1,6 @@
 # Autoy
 
-靜態 GitHub Pages 前端，目前版本為 `0.9.2`。使用者可在頁面新增帳號別名與遊戲 API token；token 僅保存在該瀏覽器的 `localStorage`，不會寫入 GitHub。已確認遊戲 API 使用 HTTP `token` header 傳送原始 JWT，不使用 `Authorization: Bearer`。
+靜態 GitHub Pages 前端，目前版本為 `0.9.3`。使用者可在頁面新增帳號別名與遊戲 API token；token 僅保存在該瀏覽器的 `localStorage`，不會寫入 GitHub。已確認遊戲 API 使用 HTTP `token` header 傳送原始 JWT，不使用 `Authorization: Bearer`。
 
 伺服器若在成功回應的 `token` header 提供更新值，Autoy 會自動更新該帳號的本機 token。
 

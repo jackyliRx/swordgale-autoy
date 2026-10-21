@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.9.2";
+const uiVersion = "0.9.3";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -25,7 +25,7 @@ const active = () => accounts.find((a) => a.id === activeId);
 function runtimeFor(id = activeId) {
   if (!runtimes.has(id)) {
     const account = accounts.find((entry) => entry.id === id);
-    runtimes.set(id, { heroes: [], equipments: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemsPayload: null, itemsRefreshPromise: null, itemsRefreshGeneration: 0, forgeProfile: null, forgeTypes: [], forgeMines: [], forgeDraft: { workshop: 1, enabled: false, heroId: "", name: "", type: "", selectedMines: [], recoveryItemId: "" }, forgeDataUpdatedAt: 0, forgeRunning: false, forgeTimer: null, forgeWakeAt: 0, forgeBusy: false, forgeLastWait: false, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, stopReason: null, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, huntPaths: [], nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, writeQueue: Promise.resolve(), actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null, captchaSolveCount: 0, captchaThreshold: randomCaptchaThreshold(), captchaSolving: false, forgePausedForCaptcha: false, huntPausedForCaptcha: false, captchaRestCount: 0, captchaRestLastAt: 0 });
+    runtimes.set(id, { heroes: [], equipments: [], items: Array.isArray(account?.itemCatalog) ? account.itemCatalog : [], itemsUpdatedAt: Number(account?.itemsUpdatedAt) || 0, itemsPayload: null, itemsRefreshPromise: null, itemsRefreshGeneration: 0, forgeProfile: null, forgeTypes: [], forgeMines: [], forgeDraft: { workshop: 1, enabled: false, heroId: "", name: "", type: "", selectedMines: [], recoveryItemId: "" }, forgeDataUpdatedAt: 0, forgeRunning: false, forgeTimer: null, forgeWakeAt: 0, forgeBusy: false, forgeLastWait: false, itemRecoveryActive: false, recoveryFallbackHeroes: new Set(), messages: [], operations: [], reports: [], currentReport: null, timer: null, refreshPromise: null, running: false, turnActive: false, runnerProgressAt: 0, runnerProgressPhase: null, stopReason: null, cooldownAt: 0, serverClockOffsetMs: 0, restUntil: 0, canForward: null, huntPaths: [], nextWakeAt: 0, watchdog: null, aborters: new Set(), writeBusy: false, writeQueue: Promise.resolve(), actionBusy: false, recoveryRequests: new Set(), recoveryTimers: new Map(), deathMovePhase: null, deathRecoveryPhase: false, huntMovePhase: null, captchaSolveCount: 0, captchaThreshold: randomCaptchaThreshold(), captchaSolving: false, forgePausedForCaptcha: false, huntPausedForCaptcha: false, captchaRestCount: 0, captchaRestLastAt: 0 });
   }
   return runtimes.get(id);
 }
@@ -86,7 +86,7 @@ function operation(accountId, event, details = {}) {
   if (typeof safeDetails.message === "string") safeDetails.message = safeDetails.message.replace(/API (\d+):[\s\S]*/, "API $1").slice(0, 500);
   state.operations.unshift({ at: new Date().toISOString(), event, ...safeDetails });
   state.operations.splice(500);
-  if (accountId === activeId) renderOperations(accountId);
+  if (accountId === activeId && $("operation-card")?.open) prependOperationEntry(state.operations[0]);
 }
 function safeOperationPayload(value, depth = 0) {
   if (depth > 8) return "[內容層級過深，已截斷]";
@@ -108,9 +108,30 @@ function operationRequestBody(body) {
   return safeOperationPayload(body);
 }
 function renderOperations(accountId = activeId) {
+  if (!$("operation-card")?.open) return;
   const account = accounts.find((entry) => entry.id === accountId);
   const state = runtimeFor(accountId);
-  $("operations").textContent = !account ? "尚未選擇帳號。" : account.settings?.operationLog !== true ? "此帳號未啟用操作紀錄。請在此視窗勾選後再記錄新的操作。" : state.operations.length ? JSON.stringify(state.operations, null, 2) : "尚未記錄操作。啟用後的下一個讀取或自動流程會出現在此處。";
+  const container = $("operations");
+  container.replaceChildren();
+  if (!account) { container.textContent = "尚未選擇帳號。"; return; }
+  if (account.settings?.operationLog !== true) { container.textContent = "此帳號未啟用操作紀錄。請在此視窗勾選後再記錄新的操作。"; return; }
+  if (!state.operations.length) { container.textContent = "尚未記錄操作。啟用後的下一個讀取或自動流程會出現在此處。"; return; }
+  const fragment = document.createDocumentFragment();
+  for (const entry of state.operations) fragment.append(createOperationEntry(entry));
+  container.append(fragment);
+}
+function createOperationEntry(entry) {
+  const row = document.createElement("pre");
+  row.className = "operation-entry";
+  row.textContent = JSON.stringify(entry, null, 2);
+  return row;
+}
+function prependOperationEntry(entry) {
+  const container = $("operations");
+  if (!container || !$("operation-card")?.open) return;
+  if (container.childElementCount === 0 && container.textContent) container.replaceChildren();
+  container.prepend(createOperationEntry(entry));
+  while (container.childElementCount > 500) container.lastElementChild.remove();
 }
 function renderFlowMessages(accountId = activeId) {
   const account = accounts.find((entry) => entry.id === accountId);
@@ -272,6 +293,7 @@ async function request(path, options = {}, accountId = activeId) {
     if (rotatedToken && rotatedToken !== account.token) { account.token = rotatedToken.replace(/^Bearer\s+/i, ""); save(); renderAccounts(); log("已更新 API token", accountId); }
     const data = await response.json();
     operation(accountId, "api.success", { requestId, method, path, requestBody, status: response.status, durationMs: Date.now() - startedAt, responseBody: safeOperationPayload(data) });
+    if (path === "/hunt" || path.startsWith("/hunt?") || path.startsWith("/move/") || path.startsWith("/moveForkPath/") || path === "/heroes/restAll" || path === "/heroes/restAll/complete") markRunnerProgress(accountId, `API ${method} ${path}`);
     debug(accountId, "api.success", { method, path, status: response.status });
     return data;
   } catch (error) {
@@ -1211,6 +1233,7 @@ async function refreshAccount(accountId = activeId, { quiet = false } = {}) {
     state.cooldownAt = localCooldownAt(huntInfo.huntAvailableAt, state);
     state.huntPaths = Array.isArray(huntInfo.paths) ? huntInfo.paths : [];
     state.equipments = Array.isArray(equipData) ? equipData : (equipData?.equipments || []);
+    markRunnerProgress(accountId, "更新狩獵狀態");
     debug(accountId, "state.refreshed", { party: partyDebug(state.heroes.filter((hero) => hero.selected === true)), huntZone: huntInfo.huntZone, huntStage: huntInfo.huntStage, canForward: state.canForward, cooldownAt: huntInfo.huntAvailableAt || null });
     if (accountId === activeId) {
       renderHeroes(accountId);
@@ -1717,7 +1740,7 @@ async function tryUseRecoveryItems(c, accountId, { strict = false } = {}) {
     const beforeItem = itemRecoverySnapshot(choice.item);
     const beforeHero = heroRecoverySnapshot(hero);
     let result, retrySucceeded = false;
-    try { result = await request(`/items/${encodeURIComponent(choice.item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity, heroId: hero.id }) }, accountId); }
+    try { result = await request(`/items/${encodeURIComponent(choice.item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity, heroId: hero.id }) }, accountId); markRunnerProgress(accountId, "補品使用完成"); }
     catch (error) {
       if (!interceptItemRecoveryIssue) {
         log(`${hero.name} 使用 ${choice.item.name} 的請求結果未確認；未啟用補品異常攔截，下一輪重新讀取後繼續`, accountId);
@@ -1732,11 +1755,8 @@ async function tryUseRecoveryItems(c, accountId, { strict = false } = {}) {
           try { await refresh(accountId); } catch { /* Back-pack evidence is sufficient; the normal next cycle refreshes heroes again. */ }
           createItemRecoveryIncident(accountId, "aborted-request-resolved", "補品請求中止，但重新讀取背包確認已消耗", { item: { itemId: beforeItem.itemId, before: beforeItem, verified: itemRecoverySnapshot(verifiedItem) }, hero: { before: beforeHero, after: heroRecoverySnapshot((runtimeFor(accountId).heroes || []).find((entry) => String(entry.id) === String(hero.id))) }, error: String(error.message || error).slice(0, 160), stopReason: stopReason || null }, { status: "resolved", verify: false });
           if (requestWasAborted && !state.running && shouldResumeAfterAbortedItemUse(stopReason)) {
-            state.running = true; state.stopReason = null;
-            state.watchdog = setInterval(() => {
-              const settings = config(accountId);
-              if (state.running && state.nextWakeAt && Date.now() > state.nextWakeAt + settings.alertMinutes * 60000) stopRunner(accountId, "超過無動作提醒時間，已停止");
-            }, 30000);
+            state.running = true; state.turnActive = true; state.runnerProgressAt = Date.now(); state.runnerProgressPhase = "確認補品使用結果"; state.stopReason = null;
+            startRunnerWatchdog(accountId);
             renderAccounts();
           }
           log(`${hero.name} 使用 ${choice.item.name} 的請求${requestWasAborted ? "中止" : "失敗"}，但重新讀取背包確認已消耗；${state.running ? "繼續補品流程" : "依停止原因不自動恢復"}`, accountId);
@@ -1745,6 +1765,7 @@ async function tryUseRecoveryItems(c, accountId, { strict = false } = {}) {
         if (!requestWasAborted) {
           try {
             result = await request(`/items/${encodeURIComponent(choice.item.id)}/use`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quantity, heroId: hero.id }) }, accountId);
+            markRunnerProgress(accountId, "補品重試完成");
             retrySucceeded = true;
           } catch (retryError) {
             createItemRecoveryIncident(accountId, "use-request-failed", "使用補品 API 請求失敗（已重試一次）", { item: { itemId: beforeItem.itemId, before: beforeItem, response: null }, hero: { before: beforeHero, after: null }, error: `${String(error.message || error).slice(0, 80)} → ${String(retryError.message || retryError).slice(0, 80)}` });
@@ -1816,6 +1837,9 @@ function schedule(ms, accountId) {
   const state = runtimeFor(accountId);
   clearTimeout(state.timer);
   state.nextWakeAt = Date.now() + Math.max(1000, ms);
+  state.turnActive = false;
+  state.runnerProgressAt = Date.now();
+  state.runnerProgressPhase = "已排定下一輪";
   operation(accountId, "runner.scheduled", { delayMs: Math.max(1000, ms), nextWakeAt: new Date(state.nextWakeAt).toISOString() });
   debug(accountId, "runner.scheduled", { delayMs: Math.max(1000, ms), nextWakeAt: new Date(state.nextWakeAt).toISOString() });
   state.timer = setTimeout(() => { void turn(accountId).catch((error) => warn(`自動狩獵排程執行失敗：${error.message || error}`, accountId)); }, Math.max(1000, ms));
@@ -1824,11 +1848,34 @@ function warn(message, accountId = activeId) {
   if (accountId === activeId) { $("alert").textContent = message; $("alert").hidden = false; document.title = `⚠ ${message} | Autoy`; }
   log(message, accountId);
 }
+function markRunnerProgress(accountId, phase) {
+  const state = runtimeFor(accountId);
+  if (!state.running || !state.turnActive) return;
+  state.runnerProgressAt = Date.now();
+  state.runnerProgressPhase = phase;
+}
+function startRunnerWatchdog(accountId) {
+  const state = runtimeFor(accountId);
+  clearInterval(state.watchdog);
+  state.watchdog = setInterval(() => {
+    const settings = config(accountId);
+    const timeoutMs = settings.alertMinutes * 60000;
+    if (!state.running) return;
+    if (state.turnActive) {
+      if (state.runnerProgressAt && Date.now() > state.runnerProgressAt + timeoutMs) {
+        const phase = state.runnerProgressPhase || "未知階段";
+        stopRunner(accountId, `狩獵流程在「${phase}」超過 ${settings.alertMinutes} 分鐘沒有進度，已停止`);
+      }
+      return;
+    }
+    if (state.nextWakeAt && Date.now() > state.nextWakeAt + timeoutMs) stopRunner(accountId, "超過無動作提醒時間，已停止");
+  }, 30000);
+}
 function stopRunner(accountId, reason = "已停止") {
   const state = runtimeFor(accountId);
   operation(accountId, "runner.stopped", { reason });
   debug(accountId, "runner.stopped", { reason });
-  state.running = false; state.stopReason = reason;
+  state.running = false; state.turnActive = false; state.stopReason = reason;
   clearTimeout(state.timer); clearInterval(state.watchdog);
   for (const controller of state.aborters) controller.abort();
   state.aborters.clear(); state.timer = state.watchdog = null; state.nextWakeAt = 0;
@@ -2363,6 +2410,9 @@ async function turn(accountId) {
   const state = runtimeFor(accountId);
   if (!state.running) return;
   state.nextWakeAt = Date.now();
+  state.turnActive = true;
+  state.runnerProgressAt = Date.now();
+  state.runnerProgressPhase = "開始新一輪";
   try {
     const c = config(accountId);
     if (!validConfig(c)) throw new Error("請檢查此帳號的自動狩獵設定");
@@ -2374,12 +2424,13 @@ async function turn(accountId) {
     if (sleepMs > 0) { const sleepMin = Math.round(sleepMs / 60000); log(`擬人模式：睡眠時段，${sleepMin} 分鐘後繼續`, accountId); schedule(sleepMs, accountId); return; }
     await refreshAccount(accountId);
     if (!state.running) return;
+    markRunnerProgress(accountId, "檢查狩獵狀態");
     const party = stopForInvalidParty(accountId);
     debug(accountId, "runner.turn", { config: c, party: partyDebug(party), deathMovePhase: state.deathMovePhase, deathRecoveryPhase: state.deathRecoveryPhase, huntMovePhase: state.huntMovePhase });
-    if (state.deathMovePhase) { operation(accountId, "runner.branch", { branch: "death-move" }); debug(accountId, "runner.branch", { branch: "death-move" }); await continueDeathMove(accountId, party); return; }
-    if (state.deathRecoveryPhase) { operation(accountId, "runner.branch", { branch: "death-recovery" }); debug(accountId, "runner.branch", { branch: "death-recovery" }); await continueDeathRecovery(accountId); return; }
-    if (party.some((hero) => deathState(hero))) { operation(accountId, "runner.branch", { branch: "death-detected" }); debug(accountId, "runner.branch", { branch: "death-detected" }); await continueDeathMove(accountId, party); return; }
-    if (state.huntMovePhase) { operation(accountId, "runner.branch", { branch: "hunt-move" }); debug(accountId, "runner.branch", { branch: "hunt-move" }); await continueHuntMove(accountId, party); return; }
+    if (state.deathMovePhase) { operation(accountId, "runner.branch", { branch: "death-move" }); debug(accountId, "runner.branch", { branch: "death-move" }); markRunnerProgress(accountId, "處理陣亡移動"); await continueDeathMove(accountId, party); return; }
+    if (state.deathRecoveryPhase) { operation(accountId, "runner.branch", { branch: "death-recovery" }); debug(accountId, "runner.branch", { branch: "death-recovery" }); markRunnerProgress(accountId, "處理陣亡恢復"); await continueDeathRecovery(accountId); return; }
+    if (party.some((hero) => deathState(hero))) { operation(accountId, "runner.branch", { branch: "death-detected" }); debug(accountId, "runner.branch", { branch: "death-detected" }); markRunnerProgress(accountId, "處理陣亡角色"); await continueDeathMove(accountId, party); return; }
+    if (state.huntMovePhase) { operation(accountId, "runner.branch", { branch: "hunt-move" }); debug(accountId, "runner.branch", { branch: "hunt-move" }); markRunnerProgress(accountId, "處理地圖移動"); await continueHuntMove(accountId, party); return; }
     if (party.every((hero) => Number(hero.actionState) === 1 && Number(hero.huntZone) === 0 && Number(hero.huntStage) === 0)) {
       const resumeZoneId = huntTargetZoneId(c.huntZone);
       state.huntMovePhase = `to-zone-${resumeZoneId}`;
@@ -2388,7 +2439,7 @@ async function turn(accountId) {
       await continueHuntMove(accountId, party);
       return;
     }
-    if (party.some((hero) => Number(hero.actionState) === 2)) { operation(accountId, "runner.branch", { branch: "rest-existing" }); debug(accountId, "runner.branch", { branch: "rest-existing" }); await rest(c, accountId); return; }
+    if (party.some((hero) => Number(hero.actionState) === 2)) { operation(accountId, "runner.branch", { branch: "rest-existing" }); debug(accountId, "runner.branch", { branch: "rest-existing" }); markRunnerProgress(accountId, "處理隊伍休息"); await rest(c, accountId); return; }
     if (party.some((hero) => Number(hero.actionState) !== 0)) throw new Error("勾選出戰隊伍有移動或未識別行動；請先完成並重新讀取");
     const safetyStage = secretPathSafetyStage(c, accountId);
     const stageSafety = safetyStage !== null;
@@ -2405,6 +2456,7 @@ async function turn(accountId) {
         const branch = stageSafety ? `secret-path-stage${safetyStage}-safety-recovery` : "item-recovery";
         operation(accountId, "runner.branch", { branch });
         debug(accountId, "runner.branch", { branch });
+        markRunnerProgress(accountId, "使用補品恢復");
         const used = await tryUseRecoveryItems(recoveryConfig, accountId, { strict: stageSafety });
         if (used) { schedule(1000, accountId); return; }
       }
@@ -2413,9 +2465,9 @@ async function turn(accountId) {
         const safetyReason = c.useItems ? fullRecoveryNeedText(c, accountId) || "請確認 HP／SP 補品仍可使用" : "請在補品設定啟用「使用補品」，並設定可用的 HP／SP 補品";
         throw new Error(`草原秘徑第 ${safetyStage} 層安全補給未完成，禁止開始戰鬥：${safetyReason}`);
       }
-      operation(accountId, "runner.branch", { branch: "rest-needed" }); debug(accountId, "runner.branch", { branch: "rest-needed" }); await rest(c, accountId);
+      operation(accountId, "runner.branch", { branch: "rest-needed" }); debug(accountId, "runner.branch", { branch: "rest-needed" }); markRunnerProgress(accountId, "啟動隊伍休息"); await rest(c, accountId);
     }
-    else { operation(accountId, "runner.branch", { branch: "hunt" }); debug(accountId, "runner.branch", { branch: "hunt" }); await hunt(c, accountId); }
+    else { operation(accountId, "runner.branch", { branch: "hunt" }); debug(accountId, "runner.branch", { branch: "hunt" }); markRunnerProgress(accountId, "執行狩獵"); await hunt(c, accountId); }
   } catch (error) {
     if (error.name !== "AbortError" && error.statusCode === 403 && error.responseBody?.code === "CAPTCHA_REQUIRED") {
       const hc = config(accountId);
@@ -2492,10 +2544,10 @@ function startRunner(accountId) {
   operation(accountId, "runner.started", { version: uiVersion, targetStage: c.target, hpTarget: c.hp, spTarget: c.sp });
   debug(accountId, "runner.started", { config: c });
   if (accountId === activeId) { $("alert").hidden = true; document.title = "Autoy"; setState(null, accountId); }
-  state.watchdog = setInterval(() => {
-    const settings = config(accountId);
-    if (state.running && state.nextWakeAt && Date.now() > state.nextWakeAt + settings.alertMinutes * 60000) stopRunner(accountId, "超過無動作提醒時間，已停止");
-  }, 30000);
+  state.turnActive = false;
+  state.runnerProgressAt = Date.now();
+  state.runnerProgressPhase = "啟動狩獵流程";
+  startRunnerWatchdog(accountId);
   renderAccounts(); log("開始此帳號自動狩獵；先檢查出戰名單與目前行動", accountId); void turn(accountId).catch((error) => warn(`自動狩獵執行失敗：${error.message || error}`, accountId));
 }
 function stopAll() {
@@ -2545,7 +2597,7 @@ function initAccountEvents() {
   $("clear-operations").onclick = () => { const state = runtimeFor(activeId); state.operations = []; renderOperations(activeId); };
   $("copy-operations").onclick = () => { void copyText(JSON.stringify(runtimeFor(activeId).operations, null, 2), "操作紀錄 JSON 已複製"); };
   $("open-flow").onclick = () => { renderFlowMessages(activeId); openDialog("flow-card"); };
-  $("open-operations").onclick = () => { renderOperations(activeId); openDialog("operation-card"); };
+  $("open-operations").onclick = () => { openDialog("operation-card"); renderOperations(activeId); };
   $("open-item-recovery-incidents").onclick = () => { renderItemRecoveryIncidents(); openDialog("item-recovery-incidents"); };
   $("copy-item-recovery-incidents").onclick = () => { void copyText(JSON.stringify(itemRecoveryIncidents.filter((entry) => entry.accountRef === String(activeId)), null, 2), "補品異常 JSON 已複製"); };
   $("clear-item-recovery-incidents").onclick = () => {
