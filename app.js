@@ -1002,6 +1002,10 @@ function updateSolverVisibility() {
   const isLocal = type === "local";
   const select = $("solver-type-select");
   if (select && select.value !== type) select.value = type;
+  const nonecapRow = $("nonecap-key-row");
+  const geminiSection = $("gemini-keys-section");
+  if (nonecapRow) nonecapRow.hidden = isLocal;
+  if (geminiSection) geminiSection.hidden = !isLocal;
   const hint = $("local-solver-hint");
   const timeoutRow = $("local-solver-timeout-row");
   if (hint) hint.hidden = !isLocal;
