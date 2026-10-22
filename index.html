@@ -45,8 +45,15 @@
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:.86rem"><label style="display:flex;gap:6px;align-items:center">睡眠開始<input id="sleep-start" type="time" value="01:00" style="width:110px" /></label><label style="display:flex;gap:6px;align-items:center">睡眠結束<input id="sleep-end" type="time" value="07:00" style="width:110px" /></label></div>
         <div id="captcha-rest-settings" style="margin-top:6px;font-size:.86rem;display:flex;align-items:center;gap:6px;" hidden><label for="captcha-rest-threshold">驗證碼次數達</label><input id="captcha-rest-threshold" type="number" min="1" max="20" value="5" style="width:52px;" /> 次後休息（時長沿用擬人模式亂數）</div>
         <label class="checkbox-setting"><input id="auto-captcha-verify" type="checkbox" /> 非圖形驗證（偵測到活人驗證時自動勾選送出）</label>
-        <label class="checkbox-setting"><input id="auto-hcaptcha-solve" type="checkbox" /> 圖形驗證自動解題（hCaptcha，需設定 NoneCap API Key）</label>
-        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><label for="nonecap-api-key" style="font-size:.86rem;white-space:nowrap">NoneCap API Key</label><input id="nonecap-api-key" type="password" placeholder="nc_live_..." autocomplete="off" style="flex:1;min-width:180px;max-width:320px" /><span id="nonecap-usage" style="font-size:.8rem;white-space:nowrap;color:#9dccff"></span><button id="reset-nonecap-usage" type="button" style="font-size:.8rem;padding:2px 8px;">重置</button></div>
+        <label class="checkbox-setting"><input id="auto-hcaptcha-solve" type="checkbox" /> 圖形驗證自動解題（hCaptcha）
+          <select id="hcaptcha-solver" style="margin-left:8px;font-size:.82rem;padding:1px 4px;">
+            <option value="nonecap">NoneCap</option>
+            <option value="local">本地 Solver</option>
+          </select>
+        </label>
+        <div id="nonecap-key-row" style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><label for="nonecap-api-key" style="font-size:.86rem;white-space:nowrap">NoneCap API Key</label><input id="nonecap-api-key" type="password" placeholder="nc_live_..." autocomplete="off" style="flex:1;min-width:180px;max-width:320px" /><span id="nonecap-usage" style="font-size:.8rem;white-space:nowrap;color:#9dccff"></span><button id="reset-nonecap-usage" type="button" style="font-size:.8rem;padding:2px 8px;">重置</button></div>
+        <div id="gemini-key-row" style="margin-top:10px;display:none;align-items:center;gap:8px;flex-wrap:wrap"><label for="gemini-api-key" style="font-size:.86rem;white-space:nowrap">Gemini API Key</label><input id="gemini-api-key" type="password" placeholder="AIza..." autocomplete="off" style="flex:1;min-width:180px;max-width:320px" /></div>
+        <p id="local-solver-hint" class="hint" style="color:#e8c078;" hidden>本地 Solver 需先在本機啟動 hcaptcha-solver 服務（<code>uvicorn server:app --port 8000</code>），頁面才能呼叫。</p>
         <div class="actions utility-actions"><button id="open-reports">戰報</button><button id="open-flow">流程訊息</button><button id="open-operations">操作紀錄</button><button id="open-item-recovery-incidents">補品異常</button><button id="open-forge-debug">鍛造除錯</button></div>
         <p id="hunt-zone-warning" class="hint" style="color:#e87878;" hidden>草原秘徑從第 16 層進入，目標樓層需設 16 以上。</p>
         <p id="hunt-zone-max-stage-warning" class="hint" style="color:#e87878;" hidden></p>
