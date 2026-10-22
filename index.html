@@ -66,6 +66,11 @@
             <span style="color:#9dccff">每道題答完後等 hCaptcha 回傳結果的最長時間；網路慢或解題後長時間無反應時調高</span>
           </div>
         </div>
+        <div id="captcha-solve-retry-row" style="margin-top:8px;font-size:.86rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <label for="captcha-solve-retry" style="white-space:nowrap">解題失敗重試次數</label>
+          <input id="captcha-solve-retry" type="number" min="0" max="10" value="0" style="width:52px" />
+          <span style="color:#9dccff">0 = 失敗後立即停止；設 1 以上則失敗後重新取得驗證並再試</span>
+        </div>
         <div class="actions utility-actions"><button id="open-reports">戰報</button><button id="open-flow">流程訊息</button><button id="open-operations">操作紀錄</button><button id="open-item-recovery-incidents">補品異常</button><button id="open-forge-debug">鍛造除錯</button></div>
         <p id="hunt-zone-warning" class="hint" style="color:#e87878;" hidden>草原秘徑從第 16 層進入，目標樓層需設 16 以上。</p>
         <p id="hunt-zone-max-stage-warning" class="hint" style="color:#e87878;" hidden></p>

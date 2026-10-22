@@ -13,6 +13,7 @@ const geminiApiKeyStore = "autoy.geminiApiKey.v1";
 const geminiUsageStore = "autoy.geminiUsage.v1";
 const localExecutionTimeoutStore = "autoy.localSolver.executionTimeout.v1";
 const localResponseTimeoutStore = "autoy.localSolver.responseTimeout.v1";
+const captchaSolveRetryStore = "autoy.captchaSolveRetry.v1";
 const hcaptchaSitekey = "181ea3ce-653a-436a-8410-1e9259e6d0bc";
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let itemRecoveryIncidents = loadItemRecoveryIncidents();
@@ -898,6 +899,7 @@ function getGeminiUsage() { try { return JSON.parse(localStorage.getItem(geminiU
 function saveGeminiUsage(u) { localStorage.setItem(geminiUsageStore, JSON.stringify(u)); }
 function incrementGeminiUsage() { const u = getGeminiUsage(); const k = geminiUsageKey(); u[k] = (u[k] || 0) + 1; saveGeminiUsage(u); renderGeminiUsage(); return u[k]; }
 function renderGeminiUsage() { const el = $("gemini-usage"); if (!el) return; const u = getGeminiUsage(); const used = u[geminiUsageKey()] || 0; el.textContent = `本月已用 ${used} 次`; el.style.color = "#9dccff"; }
+function getCaptchaSolveRetry() { return Math.max(0, parseInt(localStorage.getItem(captchaSolveRetryStore) || "0", 10)); }
 function updateSolverVisibility() {
   const solver = (localStorage.getItem(nonecapSolverStore) || "nonecap");
   const isLocal = solver === "local";
@@ -1101,7 +1103,13 @@ async function forgeTurn(accountId) {
         log(`驗證類型：${captchaInfo.type || "未知"}`, accountId);
         if (captchaInfo.type === "hcaptcha" && challengeId != null) {
           if (config(accountId).autoHcaptchaSolve) {
-            const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
+            let solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
+            const maxSolveRetry = getCaptchaSolveRetry();
+            for (let _ri = 1; solved === false && _ri <= maxSolveRetry; _ri++) {
+              log(`hCaptcha 解題失敗，5 秒後重試（${_ri}/${maxSolveRetry}）...`, accountId);
+              await new Promise((r) => setTimeout(r, 5000));
+              try { const ri = await request("/captcha", {}, accountId); if (ri.type === "hcaptcha" && ri.pendingCaptchaId != null) solved = await autoSolveHcaptcha(accountId, ri.pendingCaptchaId, hcaptchaSitekey); else break; } catch { break; }
+            }
             if (solved === true) { log("hCaptcha 驗證通過，繼續自動鍛造", accountId); if (state.huntPausedForCaptcha) { state.huntPausedForCaptcha = false; log("自動狩獵已重啟", accountId); startRunner(accountId); } forgeSchedule(2000 + secureRandomInt(6001), accountId); return; }
             if (solved === "paused") return;
             log("hCaptcha 驗證未通過，停止自動鍛造", accountId);
@@ -2551,7 +2559,13 @@ async function turn(accountId) {
         if (captchaInfo.type === "hcaptcha" && challengeId != null) {
           log(`圖形驗證自動解題：${config(accountId).autoHcaptchaSolve ? "已啟用" : "未啟用"}`, accountId);
           if (config(accountId).autoHcaptchaSolve) {
-            const solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
+            let solved = await autoSolveHcaptcha(accountId, challengeId, hcaptchaSitekey);
+            const maxSolveRetry = getCaptchaSolveRetry();
+            for (let _ri = 1; solved === false && _ri <= maxSolveRetry; _ri++) {
+              log(`hCaptcha 解題失敗，5 秒後重試（${_ri}/${maxSolveRetry}）...`, accountId);
+              await new Promise((r) => setTimeout(r, 5000));
+              try { const ri = await request("/captcha", {}, accountId); if (ri.type === "hcaptcha" && ri.pendingCaptchaId != null) solved = await autoSolveHcaptcha(accountId, ri.pendingCaptchaId, hcaptchaSitekey); else break; } catch { break; }
+            }
             if (solved === true) { log("hCaptcha 驗證通過，繼續自動狩獵", accountId); if (state.forgePausedForCaptcha) { state.forgePausedForCaptcha = false; log("自動鍛造已重啟", accountId); setForgeEnabled(accountId, true); } schedule(2000 + secureRandomInt(6001), accountId); return; }
             if (solved === "paused") return;
             log("hCaptcha 驗證未通過，停止自動狩獵與自動鍛造", accountId);
@@ -2740,6 +2754,8 @@ function initAccountEvents() {
   if (execTimeoutInput) execTimeoutInput.addEventListener("change", () => { localStorage.setItem(localExecutionTimeoutStore, execTimeoutInput.value); });
   const respTimeoutInput = $("local-response-timeout");
   if (respTimeoutInput) respTimeoutInput.addEventListener("change", () => { localStorage.setItem(localResponseTimeoutStore, respTimeoutInput.value); });
+  const solveRetryInput = $("captcha-solve-retry");
+  if (solveRetryInput) solveRetryInput.addEventListener("change", () => { localStorage.setItem(captchaSolveRetryStore, solveRetryInput.value); });
   for (const id of ["target-stage", "hp-target", "sp-target", "rest-hp-target", "rest-sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console", "item-recovery-incident-enabled", "forge-debug-enabled", "auto-captcha-verify", "auto-hcaptcha-solve", "human-like", "sleep-start", "sleep-end", "captcha-rest-threshold"]) $(id)?.addEventListener("change", () => {
     persistSettings();
     if (id === "target-stage") updateHuntZoneWarning();
@@ -2762,6 +2778,8 @@ function init() {
   if (execTimeoutInput) execTimeoutInput.value = localStorage.getItem(localExecutionTimeoutStore) || "300";
   const respTimeoutInput = $("local-response-timeout");
   if (respTimeoutInput) respTimeoutInput.value = localStorage.getItem(localResponseTimeoutStore) || "60";
+  const solveRetryInput = $("captcha-solve-retry");
+  if (solveRetryInput) solveRetryInput.value = localStorage.getItem(captchaSolveRetryStore) || "0";
   updateSolverVisibility();
   renderNonecapUsage();
   renderGeminiUsage();
