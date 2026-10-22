@@ -894,15 +894,16 @@ async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
   log("偵測到 hCaptcha，呼叫 NoneCap 自動解題...", accountId);
   try { await request("/captcha/display", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId }) }, accountId); } catch {}
   const nonecapUrl = "https://api.nonecap.com/v1/solves?wait=60";
+  const nonecapUrl_local = "http://localhost:8000/v1/solves";
   const nonecapBody = JSON.stringify({ type: "hcaptcha", sitekey, url: API.replace(/\/api$/, "") });
   const nonecapHeaders = { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
   async function callNonecap() {
-    const resp = await fetch(nonecapUrl, { method: "POST", headers: nonecapHeaders, body: nonecapBody });
+    const resp = await fetch(nonecapUrl, { method: "POST", headers: nonecapHeaders, body: nonecapBody, signal: AbortSignal.timeout(180000) });
     if (!resp.ok) {
       if (resp.status >= 500) {
         log(`NoneCap 暫時無法使用（HTTP ${resp.status}），5 秒後重試一次...`, accountId);
         await new Promise((r) => setTimeout(r, 5000));
-        const resp2 = await fetch(nonecapUrl, { method: "POST", headers: nonecapHeaders, body: nonecapBody });
+        const resp2 = await fetch(nonecapUrl, { method: "POST", headers: nonecapHeaders, body: nonecapBody, signal: AbortSignal.timeout(180000) });
         if (!resp2.ok) { log(`NoneCap 重試失敗（HTTP ${resp2.status}）`, accountId); return null; }
         return resp2.json();
       }
