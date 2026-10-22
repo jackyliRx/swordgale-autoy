@@ -10,6 +10,7 @@ const nonecapApiKeyStore = "autoy.nonecapApiKey.v1";
 const nonecapUsageStore = "autoy.nonecapUsage.v1";
 const nonecapSolverStore = "autoy.hcaptchaSolver.v1";
 const geminiApiKeyStore = "autoy.geminiApiKey.v1";
+const geminiUsageStore = "autoy.geminiUsage.v1";
 const localExecutionTimeoutStore = "autoy.localSolver.executionTimeout.v1";
 const localResponseTimeoutStore = "autoy.localSolver.responseTimeout.v1";
 const hcaptchaSitekey = "181ea3ce-653a-436a-8410-1e9259e6d0bc";
@@ -892,6 +893,11 @@ function saveNonecapUsage(u) { try { localStorage.setItem(nonecapUsageStore, JSO
 function nonecapUsageKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
 function incrementNonecapUsage() { const u = getNonecapUsage(); const k = nonecapUsageKey(); u[k] = (u[k] || 0) + 1; saveNonecapUsage(u); renderNonecapUsage(); return u[k]; }
 function renderNonecapUsage() { const el = document.getElementById("nonecap-usage"); if (!el) return; const u = getNonecapUsage(); const used = u[nonecapUsageKey()] || 0; el.textContent = `本月已用 ${used} 次`; el.style.color = "#9dccff"; }
+function geminiUsageKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
+function getGeminiUsage() { try { return JSON.parse(localStorage.getItem(geminiUsageStore) || "{}"); } catch { return {}; } }
+function saveGeminiUsage(u) { localStorage.setItem(geminiUsageStore, JSON.stringify(u)); }
+function incrementGeminiUsage() { const u = getGeminiUsage(); const k = geminiUsageKey(); u[k] = (u[k] || 0) + 1; saveGeminiUsage(u); renderGeminiUsage(); return u[k]; }
+function renderGeminiUsage() { const el = $("gemini-usage"); if (!el) return; const u = getGeminiUsage(); const used = u[geminiUsageKey()] || 0; el.textContent = `本月已用 ${used} 次`; el.style.color = "#9dccff"; }
 function updateSolverVisibility() {
   const solver = (localStorage.getItem(nonecapSolverStore) || "nonecap");
   const isLocal = solver === "local";
@@ -903,6 +909,7 @@ function updateSolverVisibility() {
   if (geminiRow) geminiRow.style.display = isLocal ? "flex" : "none";
   if (hint) hint.hidden = !isLocal;
   if (timeoutRow) timeoutRow.style.display = isLocal ? "block" : "none";
+  if (isLocal) renderGeminiUsage();
 }
 async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
   const solver = (localStorage.getItem(nonecapSolverStore) || "nonecap");
@@ -955,25 +962,27 @@ async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
     await new Promise((r) => setTimeout(r, waitMs));
     const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, token: result.token }) }, accountId);
     if (verifyResult?.ok !== true) return false;
-    const monthTotal = incrementNonecapUsage();
+    const monthTotal = solver === "local" ? incrementGeminiUsage() : incrementNonecapUsage();
     const state = runtimeFor(accountId);
-    state.captchaSolveCount = (state.captchaSolveCount || 0) + 1;
-    log(`hCaptcha 已解題 ${state.captchaSolveCount}/${state.captchaThreshold} 次（本月累計 ${monthTotal} 次）`, accountId);
-    if (state.captchaSolveCount >= state.captchaThreshold) {
-      const pauseMs = (10 + secureRandomInt(21)) * 60000;
-      const pauseMin = Math.round(pauseMs / 60000);
-      const wasForgeRunning = state.forgeRunning;
-      stopRunner(accountId, `hCaptcha 解題次數達上限，暫停 ${pauseMin} 分鐘`);
-      stopForgeRunner(accountId, `hCaptcha 解題次數達上限`);
-      log(`hCaptcha 驗證次數達上限（${state.captchaThreshold} 次），暫停 ${pauseMin} 分鐘後自動重啟`, accountId);
-      state.captchaSolveCount = 0;
-      state.captchaThreshold = randomCaptchaThreshold();
-      setTimeout(() => {
-        log(`暫停結束，重啟自動狩獵${wasForgeRunning ? "與自動鍛造" : ""}`, accountId);
-        startRunner(accountId);
-        if (wasForgeRunning) setForgeEnabled(accountId, true);
-      }, pauseMs);
-      return "paused";
+    if (config(accountId).humanLike) {
+      state.captchaSolveCount = (state.captchaSolveCount || 0) + 1;
+      log(`hCaptcha 已解題 ${state.captchaSolveCount}/${state.captchaThreshold} 次（本月累計 ${monthTotal} 次）`, accountId);
+      if (state.captchaSolveCount >= state.captchaThreshold) {
+        const pauseMs = (10 + secureRandomInt(21)) * 60000;
+        const pauseMin = Math.round(pauseMs / 60000);
+        const wasForgeRunning = state.forgeRunning;
+        stopRunner(accountId, `hCaptcha 解題次數達上限，暫停 ${pauseMin} 分鐘`);
+        stopForgeRunner(accountId, `hCaptcha 解題次數達上限`);
+        log(`hCaptcha 驗證次數達上限（${state.captchaThreshold} 次），暫停 ${pauseMin} 分鐘後自動重啟`, accountId);
+        state.captchaSolveCount = 0;
+        state.captchaThreshold = randomCaptchaThreshold();
+        setTimeout(() => {
+          log(`暫停結束，重啟自動狩獵${wasForgeRunning ? "與自動鍛造" : ""}`, accountId);
+          startRunner(accountId);
+          if (wasForgeRunning) setForgeEnabled(accountId, true);
+        }, pauseMs);
+        return "paused";
+      }
     }
     return true;
   } catch (err) {
@@ -2755,7 +2764,9 @@ function init() {
   if (respTimeoutInput) respTimeoutInput.value = localStorage.getItem(localResponseTimeoutStore) || "60";
   updateSolverVisibility();
   renderNonecapUsage();
+  renderGeminiUsage();
   $("reset-nonecap-usage")?.addEventListener("click", () => { saveNonecapUsage({}); renderNonecapUsage(); });
+  $("reset-gemini-usage")?.addEventListener("click", () => { saveGeminiUsage({}); renderGeminiUsage(); });
   if (active()) loadSettings();
   render();
   if (active()) void loadAccountSnapshot(activeId).catch((error) => warn(`讀取帳號快照失敗：${error.message || error}`, activeId));
