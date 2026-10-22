@@ -960,7 +960,7 @@ function _updateGeminiRowUI(row, k) {
   const on = "font-size:.8rem;padding:2px 8px;outline:2px solid #48c97e;color:#48c97e;border-radius:3px;";
   const off = "font-size:.8rem;padding:2px 8px;";
   const btn = row.querySelector(".gk-enable-btn");
-  if (btn) { btn.style.cssText = k.enabled ? on : off; btn.textContent = k.enabled ? "啟用中" : "啟用"; }
+  if (btn) { btn.style.cssText = k.enabled ? on : off; btn.textContent = k.enabled ? "啟用中" : "未啟用"; }
   const status = row.querySelector(".gk-quota-status");
   if (status) status.textContent = !k.enabled && k.disabledAt ? `配額耗盡，最後使用 ${fmtTime(k.disabledAt)}` : "";
 }
@@ -971,7 +971,7 @@ function buildGeminiKeyRow(k) {
   row.style.cssText = "margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap";
   row.dataset.keyId = k.id;
   const enableBtn = document.createElement("button"); enableBtn.type = "button"; enableBtn.className = "gk-enable-btn";
-  enableBtn.style.cssText = k.enabled ? on : off; enableBtn.textContent = k.enabled ? "啟用中" : "啟用";
+  enableBtn.style.cssText = k.enabled ? on : off; enableBtn.textContent = k.enabled ? "啟用中" : "未啟用";
   enableBtn.addEventListener("click", () => toggleGeminiKeyEnabled(k.id));
   row.appendChild(enableBtn);
   const label = document.createElement("label"); label.style.cssText = "font-size:.86rem;white-space:nowrap"; label.textContent = "Gemini API Key";
