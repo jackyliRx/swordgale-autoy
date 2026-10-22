@@ -924,7 +924,18 @@ async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
     const localBody = { type: "hcaptcha", sitekey, url: gameUrl, execution_timeout: execTimeout, response_timeout: respTimeout };
     if (geminiKey) localBody.gemini_api_key = geminiKey;
     try {
-      const resp = await fetch("http://localhost:8000/v1/solves", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(localBody), signal: AbortSignal.timeout(180000) });
+      const solveStart = Date.now();
+      log("解題中… (1 秒)", accountId);
+      const progressTimer = setInterval(() => {
+        const elapsed = Math.round((Date.now() - solveStart) / 1000);
+        log(`解題中… (${elapsed} 秒)`, accountId);
+      }, 5000);
+      let resp;
+      try {
+        resp = await fetch("http://localhost:8000/v1/solves", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(localBody), signal: AbortSignal.timeout(180000) });
+      } finally {
+        clearInterval(progressTimer);
+      }
       if (!resp.ok) { log(`本地 Solver 請求失敗（HTTP ${resp.status}）`, accountId); return false; }
       result = await resp.json();
     } catch (err) { log(`本地 Solver 呼叫失敗：${err.message || String(err)}`, accountId); return false; }
