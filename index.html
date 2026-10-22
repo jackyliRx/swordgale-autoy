@@ -8,7 +8,7 @@
   </head>
   <body>
     <main class="app-shell">
-      <header><h1>Autoy</h1><p>多角色自動狩獵</p><span class="badge app-version">v0.9.3</span></header>
+      <header><h1>Autoy</h1><p>多角色自動狩獵</p><span class="badge app-version">v0.10.0</span></header>
       <div class="workspace">
         <aside class="card sidebar" id="hero-panel">
           <div class="heading"><h2>角色</h2><span id="party-summary" class="badge">尚未讀取</span></div>
@@ -45,8 +45,27 @@
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:.86rem"><label style="display:flex;gap:6px;align-items:center">睡眠開始<input id="sleep-start" type="time" value="01:00" style="width:110px" /></label><label style="display:flex;gap:6px;align-items:center">睡眠結束<input id="sleep-end" type="time" value="07:00" style="width:110px" /></label></div>
         <div id="captcha-rest-settings" style="margin-top:6px;font-size:.86rem;display:flex;align-items:center;gap:6px;" hidden><label for="captcha-rest-threshold">驗證碼次數達</label><input id="captcha-rest-threshold" type="number" min="1" max="20" value="5" style="width:52px;" /> 次後休息（時長沿用擬人模式亂數）</div>
         <label class="checkbox-setting"><input id="auto-captcha-verify" type="checkbox" /> 非圖形驗證（偵測到活人驗證時自動勾選送出）</label>
-        <label class="checkbox-setting"><input id="auto-hcaptcha-solve" type="checkbox" /> 圖形驗證自動解題（hCaptcha，需設定 NoneCap API Key）</label>
-        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><label for="nonecap-api-key" style="font-size:.86rem;white-space:nowrap">NoneCap API Key</label><input id="nonecap-api-key" type="password" placeholder="nc_live_..." autocomplete="off" style="flex:1;min-width:180px;max-width:320px" /><span id="nonecap-usage" style="font-size:.8rem;white-space:nowrap;color:#9dccff"></span><button id="reset-nonecap-usage" type="button" style="font-size:.8rem;padding:2px 8px;">重置</button></div>
+        <label class="checkbox-setting"><input id="auto-hcaptcha-solve" type="checkbox" /> 圖形驗證自動解題（hCaptcha）
+          <select id="hcaptcha-solver" style="margin-left:8px;font-size:.82rem;padding:1px 4px;">
+            <option value="nonecap">NoneCap</option>
+            <option value="local">本地 Solver</option>
+          </select>
+        </label>
+        <div id="nonecap-key-row" style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><label for="nonecap-api-key" style="font-size:.86rem;white-space:nowrap">NoneCap API Key</label><input id="nonecap-api-key" type="password" placeholder="nc_live_..." autocomplete="off" style="flex:1;min-width:180px;max-width:320px" /><span id="nonecap-usage" style="font-size:.8rem;white-space:nowrap;color:#9dccff"></span><button id="reset-nonecap-usage" type="button" style="font-size:.8rem;padding:2px 8px;">重置</button></div>
+        <div id="gemini-key-row" style="margin-top:10px;display:none;align-items:center;gap:8px;flex-wrap:wrap"><label for="gemini-api-key" style="font-size:.86rem;white-space:nowrap">Gemini API Key</label><input id="gemini-api-key" type="password" placeholder="AIza..." autocomplete="off" style="flex:1;min-width:180px;max-width:320px" /><span id="gemini-usage" style="font-size:.8rem;white-space:nowrap;color:#9dccff"></span><button id="reset-gemini-usage" type="button" style="font-size:.8rem;padding:2px 8px;">重置</button></div>
+        <p id="local-solver-hint" class="hint" style="color:#e8c078;" hidden>本地 Solver 需先在本機啟動 hcaptcha-solver 服務（<code>uvicorn server:app --port 8000</code>），頁面才能呼叫。</p>
+        <div id="local-solver-timeout-row" style="margin-top:8px;display:none;font-size:.86rem">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+            <label for="local-execution-timeout" style="white-space:nowrap">解題總時限（秒）</label>
+            <input id="local-execution-timeout" type="number" min="30" max="600" value="300" style="width:64px" />
+            <span style="color:#9dccff">從點擊 checkbox 到完成所有題目的最長等待時間，逾時視為失敗</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <label for="local-response-timeout" style="white-space:nowrap">等待回應時限（秒）</label>
+            <input id="local-response-timeout" type="number" min="10" max="300" value="60" style="width:64px" />
+            <span style="color:#9dccff">每道題答完後等 hCaptcha 回傳結果的最長時間；網路慢或解題後長時間無反應時調高</span>
+          </div>
+        </div>
         <div class="actions utility-actions"><button id="open-reports">戰報</button><button id="open-flow">流程訊息</button><button id="open-operations">操作紀錄</button><button id="open-item-recovery-incidents">補品異常</button><button id="open-forge-debug">鍛造除錯</button></div>
         <p id="hunt-zone-warning" class="hint" style="color:#e87878;" hidden>草原秘徑從第 16 層進入，目標樓層需設 16 以上。</p>
         <p id="hunt-zone-max-stage-warning" class="hint" style="color:#e87878;" hidden></p>
