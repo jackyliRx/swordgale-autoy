@@ -1004,8 +1004,8 @@ function updateSolverVisibility() {
   if (select && select.value !== type) select.value = type;
   const nonecapRow = $("nonecap-key-row");
   const geminiSection = $("gemini-keys-section");
-  if (nonecapRow) nonecapRow.hidden = isLocal;
-  if (geminiSection) geminiSection.hidden = !isLocal;
+  if (nonecapRow) nonecapRow.style.display = isLocal ? "none" : "flex";
+  if (geminiSection) geminiSection.style.display = isLocal ? "block" : "none";
   const hint = $("local-solver-hint");
   const timeoutRow = $("local-solver-timeout-row");
   if (hint) hint.hidden = !isLocal;
