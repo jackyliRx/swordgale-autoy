@@ -10,6 +10,8 @@ const nonecapApiKeyStore = "autoy.nonecapApiKey.v1";
 const nonecapUsageStore = "autoy.nonecapUsage.v1";
 const nonecapSolverStore = "autoy.hcaptchaSolver.v1";
 const geminiApiKeyStore = "autoy.geminiApiKey.v1";
+const localExecutionTimeoutStore = "autoy.localSolver.executionTimeout.v1";
+const localResponseTimeoutStore = "autoy.localSolver.responseTimeout.v1";
 const hcaptchaSitekey = "181ea3ce-653a-436a-8410-1e9259e6d0bc";
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let itemRecoveryIncidents = loadItemRecoveryIncidents();
@@ -892,12 +894,15 @@ function incrementNonecapUsage() { const u = getNonecapUsage(); const k = noneca
 function renderNonecapUsage() { const el = document.getElementById("nonecap-usage"); if (!el) return; const u = getNonecapUsage(); const used = u[nonecapUsageKey()] || 0; el.textContent = `本月已用 ${used} 次`; el.style.color = "#9dccff"; }
 function updateSolverVisibility() {
   const solver = (localStorage.getItem(nonecapSolverStore) || "nonecap");
+  const isLocal = solver === "local";
   const nonecapRow = $("nonecap-key-row");
   const geminiRow = $("gemini-key-row");
   const hint = $("local-solver-hint");
-  if (nonecapRow) nonecapRow.style.display = solver === "nonecap" ? "flex" : "none";
-  if (geminiRow) geminiRow.style.display = solver === "local" ? "flex" : "none";
-  if (hint) hint.hidden = solver !== "local";
+  const timeoutRow = $("local-solver-timeout-row");
+  if (nonecapRow) nonecapRow.style.display = isLocal ? "none" : "flex";
+  if (geminiRow) geminiRow.style.display = isLocal ? "flex" : "none";
+  if (hint) hint.hidden = !isLocal;
+  if (timeoutRow) timeoutRow.style.display = isLocal ? "block" : "none";
 }
 async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
   const solver = (localStorage.getItem(nonecapSolverStore) || "nonecap");
@@ -907,7 +912,9 @@ async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
   if (solver === "local") {
     const geminiKey = (localStorage.getItem(geminiApiKeyStore) || "").trim();
     log("偵測到 hCaptcha，呼叫本地 Solver 自動解題...", accountId);
-    const localBody = { type: "hcaptcha", sitekey, url: gameUrl };
+    const execTimeout = parseInt(localStorage.getItem(localExecutionTimeoutStore) || "300", 10);
+    const respTimeout = parseInt(localStorage.getItem(localResponseTimeoutStore) || "60", 10);
+    const localBody = { type: "hcaptcha", sitekey, url: gameUrl, execution_timeout: execTimeout, response_timeout: respTimeout };
     if (geminiKey) localBody.gemini_api_key = geminiKey;
     try {
       const resp = await fetch("http://localhost:8000/v1/solves", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(localBody), signal: AbortSignal.timeout(180000) });
@@ -2720,6 +2727,10 @@ function initAccountEvents() {
   if (geminiInput) geminiInput.addEventListener("change", () => { localStorage.setItem(geminiApiKeyStore, geminiInput.value.trim()); });
   const solverSelect = $("hcaptcha-solver");
   if (solverSelect) solverSelect.addEventListener("change", () => { localStorage.setItem(nonecapSolverStore, solverSelect.value); updateSolverVisibility(); });
+  const execTimeoutInput = $("local-execution-timeout");
+  if (execTimeoutInput) execTimeoutInput.addEventListener("change", () => { localStorage.setItem(localExecutionTimeoutStore, execTimeoutInput.value); });
+  const respTimeoutInput = $("local-response-timeout");
+  if (respTimeoutInput) respTimeoutInput.addEventListener("change", () => { localStorage.setItem(localResponseTimeoutStore, respTimeoutInput.value); });
   for (const id of ["target-stage", "hp-target", "sp-target", "rest-hp-target", "rest-sp-target", "rest-minutes", "alert-minutes", "flow-messages", "operation-log", "debug-console", "item-recovery-incident-enabled", "forge-debug-enabled", "auto-captcha-verify", "auto-hcaptcha-solve", "human-like", "sleep-start", "sleep-end", "captcha-rest-threshold"]) $(id)?.addEventListener("change", () => {
     persistSettings();
     if (id === "target-stage") updateHuntZoneWarning();
@@ -2738,6 +2749,10 @@ function init() {
   if (geminiInput) geminiInput.value = localStorage.getItem(geminiApiKeyStore) || "";
   const solverSelect = $("hcaptcha-solver");
   if (solverSelect) solverSelect.value = localStorage.getItem(nonecapSolverStore) || "nonecap";
+  const execTimeoutInput = $("local-execution-timeout");
+  if (execTimeoutInput) execTimeoutInput.value = localStorage.getItem(localExecutionTimeoutStore) || "300";
+  const respTimeoutInput = $("local-response-timeout");
+  if (respTimeoutInput) respTimeoutInput.value = localStorage.getItem(localResponseTimeoutStore) || "60";
   updateSolverVisibility();
   renderNonecapUsage();
   $("reset-nonecap-usage")?.addEventListener("click", () => { saveNonecapUsage({}); renderNonecapUsage(); });
