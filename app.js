@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.10.1";
+const uiVersion = "0.10.2";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -926,7 +926,7 @@ async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
     const localBody = { type: "hcaptcha", sitekey, url: gameUrl, execution_timeout: execTimeout, response_timeout: respTimeout };
     if (geminiKey) localBody.gemini_api_key = geminiKey;
     try {
-      const resp = await fetch("http://localhost:8000/v1/solves", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(localBody), signal: AbortSignal.timeout(180000) });
+      const resp = await fetch("http://localhost:8000/v1/solves", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(localBody), signal: AbortSignal.timeout((execTimeout + 60) * 1000) });
       if (!resp.ok) { log(`本地 Solver 請求失敗（HTTP ${resp.status}）`, accountId); return false; }
       result = await resp.json();
     } catch (err) { log(`本地 Solver 呼叫失敗：${err.message || String(err)}`, accountId); return false; }
