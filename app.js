@@ -903,12 +903,14 @@ function getCaptchaSolveRetry() { return Math.max(0, parseInt(localStorage.getIt
 function updateSolverVisibility() {
   const solver = (localStorage.getItem(nonecapSolverStore) || "nonecap");
   const isLocal = solver === "local";
-  const nonecapRow = $("nonecap-key-row");
-  const geminiRow = $("gemini-key-row");
+  const on = "font-size:.8rem;padding:2px 8px;outline:2px solid #48c97e;color:#48c97e;border-radius:3px;";
+  const off = "font-size:.8rem;padding:2px 8px;";
+  const nonecapBtn = $("nonecap-enable-btn");
+  const geminiBtn = $("gemini-enable-btn");
+  if (nonecapBtn) { nonecapBtn.style.cssText = isLocal ? off : on; nonecapBtn.textContent = isLocal ? "啟用" : "啟用中"; }
+  if (geminiBtn) { geminiBtn.style.cssText = isLocal ? on : off; geminiBtn.textContent = isLocal ? "啟用中" : "啟用"; }
   const hint = $("local-solver-hint");
   const timeoutRow = $("local-solver-timeout-row");
-  if (nonecapRow) nonecapRow.style.display = isLocal ? "none" : "flex";
-  if (geminiRow) geminiRow.style.display = isLocal ? "flex" : "none";
   if (hint) hint.hidden = !isLocal;
   if (timeoutRow) timeoutRow.style.display = isLocal ? "block" : "none";
   if (isLocal) renderGeminiUsage();
@@ -2748,8 +2750,10 @@ function initAccountEvents() {
   if (nonecapInput) nonecapInput.addEventListener("change", () => { localStorage.setItem(nonecapApiKeyStore, nonecapInput.value.trim()); });
   const geminiInput = $("gemini-api-key");
   if (geminiInput) geminiInput.addEventListener("change", () => { localStorage.setItem(geminiApiKeyStore, geminiInput.value.trim()); });
-  const solverSelect = $("hcaptcha-solver");
-  if (solverSelect) solverSelect.addEventListener("change", () => { localStorage.setItem(nonecapSolverStore, solverSelect.value); updateSolverVisibility(); });
+  $("nonecap-enable-btn")?.addEventListener("click", () => { localStorage.setItem(nonecapSolverStore, "nonecap"); updateSolverVisibility(); });
+  $("gemini-enable-btn")?.addEventListener("click", () => { localStorage.setItem(nonecapSolverStore, "local"); updateSolverVisibility(); });
+  $("nonecap-show-key")?.addEventListener("click", () => { const i = $("nonecap-api-key"); if (!i) return; i.type = i.type === "password" ? "text" : "password"; $("nonecap-show-key").textContent = i.type === "password" ? "顯示" : "隱藏"; });
+  $("gemini-show-key")?.addEventListener("click", () => { const i = $("gemini-api-key"); if (!i) return; i.type = i.type === "password" ? "text" : "password"; $("gemini-show-key").textContent = i.type === "password" ? "顯示" : "隱藏"; });
   const execTimeoutInput = $("local-execution-timeout");
   if (execTimeoutInput) execTimeoutInput.addEventListener("change", () => { localStorage.setItem(localExecutionTimeoutStore, execTimeoutInput.value); });
   const respTimeoutInput = $("local-response-timeout");
@@ -2772,8 +2776,6 @@ function init() {
   if (nonecapInput) nonecapInput.value = localStorage.getItem(nonecapApiKeyStore) || "";
   const geminiInput = $("gemini-api-key");
   if (geminiInput) geminiInput.value = localStorage.getItem(geminiApiKeyStore) || "";
-  const solverSelect = $("hcaptcha-solver");
-  if (solverSelect) solverSelect.value = localStorage.getItem(nonecapSolverStore) || "nonecap";
   const execTimeoutInput = $("local-execution-timeout");
   if (execTimeoutInput) execTimeoutInput.value = localStorage.getItem(localExecutionTimeoutStore) || "300";
   const respTimeoutInput = $("local-response-timeout");
