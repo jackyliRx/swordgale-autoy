@@ -8,7 +8,7 @@
   </head>
   <body>
     <main class="app-shell">
-      <header><h1>Autoy</h1><p>多角色自動狩獵</p><span class="badge app-version">v0.10.2</span></header>
+      <header><h1>Autoy</h1><p>多角色自動狩獵</p><span class="badge app-version">v0.11.0</span></header>
       <div class="workspace">
         <aside class="card sidebar" id="hero-panel">
           <div class="heading"><h2>角色</h2><span id="party-summary" class="badge">尚未讀取</span></div>
@@ -46,8 +46,12 @@
         <div id="captcha-rest-settings" style="margin-top:6px;font-size:.86rem;display:flex;align-items:center;gap:6px;" hidden><label for="captcha-rest-threshold">驗證碼次數達</label><input id="captcha-rest-threshold" type="number" min="1" max="20" value="5" style="width:52px;" /> 次後休息（時長沿用擬人模式亂數）</div>
         <label class="checkbox-setting"><input id="auto-captcha-verify" type="checkbox" /> 非圖形驗證（偵測到活人驗證時自動勾選送出）</label>
         <label class="checkbox-setting"><input id="auto-hcaptcha-solve" type="checkbox" /> 圖形驗證自動解題（hCaptcha）</label>
-        <div id="nonecap-key-row" style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><button id="nonecap-enable-btn" type="button" style="font-size:.8rem;padding:2px 8px;">啟用</button><label for="nonecap-api-key" style="font-size:.86rem;white-space:nowrap">NoneCap API Key</label><input id="nonecap-api-key" type="password" placeholder="nc_live_..." autocomplete="off" style="flex:1;min-width:180px;max-width:320px" /><button id="nonecap-show-key" type="button" style="font-size:.8rem;padding:2px 8px;">顯示</button><span id="nonecap-usage" style="font-size:.8rem;white-space:nowrap;color:#9dccff"></span><button id="reset-nonecap-usage" type="button" style="font-size:.8rem;padding:2px 8px;">重置</button></div>
-        <div id="gemini-key-row" style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><button id="gemini-enable-btn" type="button" style="font-size:.8rem;padding:2px 8px;">啟用</button><label for="gemini-api-key" style="font-size:.86rem;white-space:nowrap">Gemini API Key</label><input id="gemini-api-key" type="password" placeholder="AIza..." autocomplete="off" style="flex:1;min-width:180px;max-width:320px" /><button id="gemini-show-key" type="button" style="font-size:.8rem;padding:2px 8px;">顯示</button><span id="gemini-usage" style="font-size:.8rem;white-space:nowrap;color:#9dccff"></span><button id="reset-gemini-usage" type="button" style="font-size:.8rem;padding:2px 8px;">重置</button></div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:8px"><label for="solver-type-select" style="font-size:.86rem;white-space:nowrap">解題方式</label><select id="solver-type-select" style="font-size:.86rem;padding:2px 4px"><option value="nonecap">NoneCap</option><option value="local">本地 Solver（Gemini）</option></select></div>
+        <div id="nonecap-key-row" style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><label for="nonecap-api-key" style="font-size:.86rem;white-space:nowrap">NoneCap API Key</label><input id="nonecap-api-key" type="password" placeholder="nc_live_..." autocomplete="off" style="flex:1;min-width:180px;max-width:320px" /><button id="nonecap-show-key" type="button" style="font-size:.8rem;padding:2px 8px;">顯示</button><span id="nonecap-usage" style="font-size:.8rem;white-space:nowrap;color:#9dccff"></span><button id="reset-nonecap-usage" type="button" style="font-size:.8rem;padding:2px 8px;">重置</button><span id="nonecap-quota-status" style="font-size:.8rem;white-space:nowrap;color:#e8986b"></span><button id="nonecap-reenable-btn" type="button" style="font-size:.8rem;padding:2px 8px;" hidden>重新啟用</button></div>
+        <div id="gemini-keys-section">
+          <div id="gemini-keys-container"></div>
+          <div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><button id="gemini-add-key-btn" type="button" style="font-size:.8rem;padding:2px 8px;">+ 新增 Gemini Key</button><span id="gemini-usage" style="font-size:.8rem;white-space:nowrap;color:#9dccff"></span><button id="reset-gemini-usage" type="button" style="font-size:.8rem;padding:2px 8px;">重置</button></div>
+        </div>
         <p id="local-solver-hint" class="hint" style="color:#e8c078;" hidden>本地 Solver 需先在本機啟動 hcaptcha-solver 服務（<code>uvicorn server:app --port 8000</code>），頁面才能呼叫。</p>
         <div id="local-solver-timeout-row" style="margin-top:8px;display:none;font-size:.86rem">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">

@@ -1,5 +1,5 @@
 const API = "https://myteam.swordgale.online/api";
-const uiVersion = "0.10.2";
+const uiVersion = "0.11.0";
 const storeKey = "autoy.accounts.v1";
 const itemRecoveryIncidentKey = "autoy.itemRecoveryIncidents.v1";
 const itemRecoveryIncidentLimit = 100;
@@ -14,6 +14,11 @@ const geminiUsageStore = "autoy.geminiUsage.v1";
 const localExecutionTimeoutStore = "autoy.localSolver.executionTimeout.v1";
 const localResponseTimeoutStore = "autoy.localSolver.responseTimeout.v1";
 const captchaSolveRetryStore = "autoy.captchaSolveRetry.v1";
+const nonecapEnabledStore = "autoy.nonecapEnabled.v1";
+const geminiEnabledStore = "autoy.geminiEnabled.v1";
+const nonecapDisabledAtStore = "autoy.nonecapDisabledAt.v1";
+const geminiDisabledAtStore = "autoy.geminiDisabledAt.v1";
+const geminiKeysStore = "autoy.geminiKeys.v2";
 const hcaptchaSitekey = "181ea3ce-653a-436a-8410-1e9259e6d0bc";
 let accounts = JSON.parse(localStorage.getItem(storeKey) || "[]");
 let itemRecoveryIncidents = loadItemRecoveryIncidents();
@@ -900,99 +905,211 @@ function saveGeminiUsage(u) { localStorage.setItem(geminiUsageStore, JSON.string
 function incrementGeminiUsage() { const u = getGeminiUsage(); const k = geminiUsageKey(); u[k] = (u[k] || 0) + 1; saveGeminiUsage(u); renderGeminiUsage(); return u[k]; }
 function renderGeminiUsage() { const el = $("gemini-usage"); if (!el) return; const u = getGeminiUsage(); const used = u[geminiUsageKey()] || 0; el.textContent = `本月已用 ${used} 次`; el.style.color = "#9dccff"; }
 function getCaptchaSolveRetry() { return Math.max(0, parseInt(localStorage.getItem(captchaSolveRetryStore) || "0", 10)); }
-function updateSolverVisibility() {
-  const solver = (localStorage.getItem(nonecapSolverStore) || "nonecap");
-  const isLocal = solver === "local";
+function getSelectedSolverType() { return localStorage.getItem(nonecapSolverStore) || "nonecap"; }
+function isGeminiEnabled() { return getGeminiKeys().some(k => k.enabled); }
+function fmtTime(ts) { return ts ? new Date(+ts).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }) : ""; }
+function disableKeyQuota(solver) {
+  if (solver === "nonecap") {
+    localStorage.setItem(nonecapDisabledAtStore, String(Date.now()));
+    updateSolverVisibility();
+  }
+}
+function updateNonecapStatus() {
+  const disabledAt = localStorage.getItem(nonecapDisabledAtStore);
+  const statusEl = $("nonecap-quota-status");
+  const reenableBtn = $("nonecap-reenable-btn");
+  if (statusEl) statusEl.textContent = disabledAt ? `配額耗盡，最後使用 ${fmtTime(+disabledAt)}` : "";
+  if (reenableBtn) reenableBtn.hidden = !disabledAt;
+}
+function getGeminiKeys() { try { return JSON.parse(localStorage.getItem(geminiKeysStore) || "[]"); } catch { return []; } }
+function saveGeminiKeysRaw(keys) { localStorage.setItem(geminiKeysStore, JSON.stringify(keys)); }
+function disableGeminiKeyQuota(keyId) {
+  const keys = getGeminiKeys();
+  const k = keys.find(gk => gk.id === keyId);
+  if (!k) return;
+  k.enabled = false; k.disabledAt = Date.now(); saveGeminiKeysRaw(keys);
+  const container = $("gemini-keys-container");
+  if (container) { const row = container.querySelector(`[data-key-id="${keyId}"]`); if (row) _updateGeminiRowUI(row, k); }
+  updateSolverVisibility();
+}
+function toggleGeminiKeyEnabled(keyId) {
+  const keys = getGeminiKeys();
+  const k = keys.find(gk => gk.id === keyId);
+  if (!k) return;
+  k.enabled = !k.enabled; if (k.enabled) k.disabledAt = null; saveGeminiKeysRaw(keys);
+  const container = $("gemini-keys-container");
+  if (container) { const row = container.querySelector(`[data-key-id="${keyId}"]`); if (row) _updateGeminiRowUI(row, k); }
+  updateSolverVisibility();
+}
+function addGeminiKey() {
+  const keys = getGeminiKeys();
+  const newId = keys.length === 0 ? 1 : Math.max(...keys.map(k => k.id)) + 1;
+  const newKey = { id: newId, key: "", enabled: false, disabledAt: null };
+  keys.push(newKey); saveGeminiKeysRaw(keys);
+  const container = $("gemini-keys-container");
+  if (container) container.appendChild(buildGeminiKeyRow(newKey));
+  updateSolverVisibility();
+}
+function deleteGeminiKey(keyId) {
+  saveGeminiKeysRaw(getGeminiKeys().filter(gk => gk.id !== keyId));
+  const container = $("gemini-keys-container");
+  if (container) { const row = container.querySelector(`[data-key-id="${keyId}"]`); if (row) row.remove(); }
+  updateSolverVisibility();
+}
+function _updateGeminiRowUI(row, k) {
   const on = "font-size:.8rem;padding:2px 8px;outline:2px solid #48c97e;color:#48c97e;border-radius:3px;";
   const off = "font-size:.8rem;padding:2px 8px;";
-  const nonecapBtn = $("nonecap-enable-btn");
-  const geminiBtn = $("gemini-enable-btn");
-  if (nonecapBtn) { nonecapBtn.style.cssText = isLocal ? off : on; nonecapBtn.textContent = isLocal ? "啟用" : "啟用中"; }
-  if (geminiBtn) { geminiBtn.style.cssText = isLocal ? on : off; geminiBtn.textContent = isLocal ? "啟用中" : "啟用"; }
+  const btn = row.querySelector(".gk-enable-btn");
+  if (btn) { btn.style.cssText = k.enabled ? on : off; btn.textContent = k.enabled ? "啟用中" : "啟用"; }
+  const status = row.querySelector(".gk-quota-status");
+  if (status) status.textContent = !k.enabled && k.disabledAt ? `配額耗盡，最後使用 ${fmtTime(k.disabledAt)}` : "";
+}
+function buildGeminiKeyRow(k) {
+  const on = "font-size:.8rem;padding:2px 8px;outline:2px solid #48c97e;color:#48c97e;border-radius:3px;";
+  const off = "font-size:.8rem;padding:2px 8px;";
+  const row = document.createElement("div");
+  row.style.cssText = "margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap";
+  row.dataset.keyId = k.id;
+  const enableBtn = document.createElement("button"); enableBtn.type = "button"; enableBtn.className = "gk-enable-btn";
+  enableBtn.style.cssText = k.enabled ? on : off; enableBtn.textContent = k.enabled ? "啟用中" : "啟用";
+  enableBtn.addEventListener("click", () => toggleGeminiKeyEnabled(k.id));
+  row.appendChild(enableBtn);
+  const label = document.createElement("label"); label.style.cssText = "font-size:.86rem;white-space:nowrap"; label.textContent = "Gemini API Key";
+  row.appendChild(label);
+  const input = document.createElement("input"); input.type = "password"; input.placeholder = "AIza..."; input.autocomplete = "off";
+  input.style.cssText = "flex:1;min-width:180px;max-width:320px"; input.value = k.key || "";
+  input.addEventListener("input", () => { const ks = getGeminiKeys(); const f = ks.find(gk => gk.id === k.id); if (f) { f.key = input.value; saveGeminiKeysRaw(ks); } });
+  row.appendChild(input);
+  const showBtn = document.createElement("button"); showBtn.type = "button"; showBtn.style.cssText = "font-size:.8rem;padding:2px 8px;"; showBtn.textContent = "顯示";
+  showBtn.addEventListener("click", () => { input.type = input.type === "password" ? "text" : "password"; showBtn.textContent = input.type === "password" ? "顯示" : "隱藏"; });
+  row.appendChild(showBtn);
+  const delBtn = document.createElement("button"); delBtn.type = "button"; delBtn.style.cssText = "font-size:.8rem;padding:2px 8px;"; delBtn.textContent = "刪除";
+  delBtn.addEventListener("click", () => deleteGeminiKey(k.id));
+  row.appendChild(delBtn);
+  const status = document.createElement("span"); status.className = "gk-quota-status"; status.style.cssText = "font-size:.8rem;white-space:nowrap;color:#e8986b";
+  status.textContent = !k.enabled && k.disabledAt ? `配額耗盡，最後使用 ${fmtTime(k.disabledAt)}` : "";
+  row.appendChild(status);
+  return row;
+}
+function renderGeminiKeyRows() {
+  const container = $("gemini-keys-container");
+  if (!container) return;
+  container.innerHTML = "";
+  for (const k of getGeminiKeys()) container.appendChild(buildGeminiKeyRow(k));
+}
+function updateSolverVisibility() {
+  const type = getSelectedSolverType();
+  const isLocal = type === "local";
+  const select = $("solver-type-select");
+  if (select && select.value !== type) select.value = type;
   const hint = $("local-solver-hint");
   const timeoutRow = $("local-solver-timeout-row");
   if (hint) hint.hidden = !isLocal;
   if (timeoutRow) timeoutRow.style.display = isLocal ? "block" : "none";
-  if (isLocal) renderGeminiUsage();
+  updateNonecapStatus();
+  if (isLocal && isGeminiEnabled()) renderGeminiUsage();
 }
 async function autoSolveHcaptcha(accountId, challengeId, sitekey) {
-  const solver = (localStorage.getItem(nonecapSolverStore) || "nonecap");
+  const solverType = getSelectedSolverType();
+  const slots = [];
+  if (solverType === "nonecap") {
+    if (localStorage.getItem(nonecapDisabledAtStore)) { log("NoneCap API Key 已因配額耗盡停用，請手動重新啟用", accountId); return false; }
+    slots.push({ type: "nonecap" });
+  } else {
+    for (const gk of getGeminiKeys().filter(k => k.enabled)) slots.push({ type: "local", gk });
+  }
+  if (slots.length === 0) { log("未啟用任何解題 API Key，無法自動解題", accountId); return false; }
   try { await request("/captcha/display", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId }) }, accountId); } catch {}
   const gameUrl = API.replace(/\/api$/, "");
-  let result;
-  if (solver === "local") {
-    const geminiKey = (localStorage.getItem(geminiApiKeyStore) || "").trim();
-    log("偵測到 hCaptcha，呼叫本地 Solver 自動解題...", accountId);
-    const execTimeout = parseInt(localStorage.getItem(localExecutionTimeoutStore) || "300", 10);
-    const respTimeout = parseInt(localStorage.getItem(localResponseTimeoutStore) || "60", 10);
-    const localBody = { type: "hcaptcha", sitekey, url: gameUrl, execution_timeout: execTimeout, response_timeout: respTimeout };
-    if (geminiKey) localBody.gemini_api_key = geminiKey;
-    try {
-      const resp = await fetch("http://localhost:8000/v1/solves", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(localBody), signal: AbortSignal.timeout((execTimeout + 60) * 1000) });
-      if (!resp.ok) { log(`本地 Solver 請求失敗（HTTP ${resp.status}）`, accountId); return false; }
-      result = await resp.json();
-    } catch (err) { log(`本地 Solver 呼叫失敗：${err.message || String(err)}`, accountId); return false; }
-    if (!result || result.status !== "solved" || !result.token) { log(`本地 Solver 解題失敗：${result?.error || JSON.stringify(result)}`, accountId); return false; }
-    log("本地 Solver 解題成功", accountId);
-  } else {
-    const apiKey = (localStorage.getItem(nonecapApiKeyStore) || "").trim();
-    if (!apiKey) { log("未設定 NoneCap API Key，無法自動解題", accountId); return false; }
-    log("偵測到 hCaptcha，呼叫 NoneCap 自動解題...", accountId);
-    const nonecapUrl = "https://api.nonecap.com/v1/solves?wait=60";
-    const nonecapBody = JSON.stringify({ type: "hcaptcha", sitekey, url: gameUrl });
-    const nonecapHeaders = { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
-    async function callNonecap() {
-      const resp = await fetch(nonecapUrl, { method: "POST", headers: nonecapHeaders, body: nonecapBody, signal: AbortSignal.timeout(180000) });
-      if (!resp.ok) {
-        if (resp.status >= 500) {
-          log(`NoneCap 暫時無法使用（HTTP ${resp.status}），5 秒後重試一次...`, accountId);
-          await new Promise((r) => setTimeout(r, 5000));
-          const resp2 = await fetch(nonecapUrl, { method: "POST", headers: nonecapHeaders, body: nonecapBody, signal: AbortSignal.timeout(180000) });
-          if (!resp2.ok) { log(`NoneCap 重試失敗（HTTP ${resp2.status}）`, accountId); return null; }
-          return resp2.json();
+  for (const s of slots) {
+    let result;
+    if (s.type === "local") {
+      const gk = s.gk;
+      log(`偵測到 hCaptcha，呼叫本地 Solver（Gemini Key #${gk.id}）自動解題...`, accountId);
+      const execTimeout = parseInt(localStorage.getItem(localExecutionTimeoutStore) || "300", 10);
+      const respTimeout = parseInt(localStorage.getItem(localResponseTimeoutStore) || "60", 10);
+      const localBody = { type: "hcaptcha", sitekey, url: gameUrl, execution_timeout: execTimeout, response_timeout: respTimeout };
+      if (gk.key) localBody.gemini_api_key = gk.key;
+      try {
+        const resp = await fetch("http://localhost:8000/v1/solves", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(localBody), signal: AbortSignal.timeout((execTimeout + 60) * 1000) });
+        if (!resp.ok) {
+          if (resp.status === 429) { result = { status: "quota_exceeded" }; }
+          else { log(`本地 Solver 請求失敗（HTTP ${resp.status}）`, accountId); return false; }
+        } else { result = await resp.json(); }
+      } catch (err) { log(`本地 Solver 呼叫失敗：${err.message || String(err)}`, accountId); return false; }
+      if (result?.status === "quota_exceeded") {
+        log(`Gemini Key #${gk.id} 配額耗盡（最後使用 ${fmtTime(Date.now())}），自動停用...`, accountId);
+        disableGeminiKeyQuota(gk.id); continue;
+      }
+      if (!result || result.status !== "solved" || !result.token) { log(`本地 Solver 解題失敗：${result?.error || JSON.stringify(result)}`, accountId); return false; }
+      log("本地 Solver 解題成功", accountId);
+    } else {
+      const apiKey = (localStorage.getItem(nonecapApiKeyStore) || "").trim();
+      if (!apiKey) { log("未設定 NoneCap API Key，無法自動解題", accountId); return false; }
+      log("偵測到 hCaptcha，呼叫 NoneCap 自動解題...", accountId);
+      const nonecapUrl = "https://api.nonecap.com/v1/solves?wait=60";
+      const nonecapBody = JSON.stringify({ type: "hcaptcha", sitekey, url: gameUrl });
+      const nonecapHeaders = { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
+      async function callNonecap() {
+        const resp = await fetch(nonecapUrl, { method: "POST", headers: nonecapHeaders, body: nonecapBody, signal: AbortSignal.timeout(180000) });
+        if (!resp.ok) {
+          if (resp.status === 429 || resp.status === 402) return { status: "quota_exceeded" };
+          if (resp.status >= 500) {
+            log(`NoneCap 暫時無法使用（HTTP ${resp.status}），5 秒後重試一次...`, accountId);
+            await new Promise((r) => setTimeout(r, 5000));
+            const resp2 = await fetch(nonecapUrl, { method: "POST", headers: nonecapHeaders, body: nonecapBody, signal: AbortSignal.timeout(180000) });
+            if (!resp2.ok) { log(`NoneCap 重試失敗（HTTP ${resp2.status}）`, accountId); return null; }
+            return resp2.json();
+          }
+          log(`NoneCap 請求失敗（HTTP ${resp.status}）`, accountId); return null;
         }
-        log(`NoneCap 請求失敗（HTTP ${resp.status}）`, accountId); return null;
+        return resp.json();
       }
-      return resp.json();
-    }
-    try { result = await callNonecap(); } catch (err) { log(`NoneCap 呼叫失敗：${err.message || String(err)}`, accountId); return false; }
-    if (!result) return false;
-    if (result.status !== "solved" || !result.token) { log(`NoneCap 解題失敗：${result.error || JSON.stringify(result)}`, accountId); return false; }
-    log(`NoneCap 解題成功（${result.resolve_ms ?? "?"}ms）`, accountId);
-  }
-  try {
-    const waitMs = 2000 + secureRandomInt(3001);
-    log(`等待 ${(waitMs / 1000).toFixed(1)}s 後提交驗證...`, accountId);
-    await new Promise((r) => setTimeout(r, waitMs));
-    const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, token: result.token }) }, accountId);
-    if (verifyResult?.ok !== true) return false;
-    const monthTotal = solver === "local" ? incrementGeminiUsage() : incrementNonecapUsage();
-    const state = runtimeFor(accountId);
-    if (config(accountId).humanLike) {
-      state.captchaSolveCount = (state.captchaSolveCount || 0) + 1;
-      log(`hCaptcha 已解題 ${state.captchaSolveCount}/${state.captchaThreshold} 次（本月累計 ${monthTotal} 次）`, accountId);
-      if (state.captchaSolveCount >= state.captchaThreshold) {
-        const pauseMs = (10 + secureRandomInt(21)) * 60000;
-        const pauseMin = Math.round(pauseMs / 60000);
-        const wasForgeRunning = state.forgeRunning;
-        stopRunner(accountId, `hCaptcha 解題次數達上限，暫停 ${pauseMin} 分鐘`);
-        stopForgeRunner(accountId, `hCaptcha 解題次數達上限`);
-        log(`hCaptcha 驗證次數達上限（${state.captchaThreshold} 次），暫停 ${pauseMin} 分鐘後自動重啟`, accountId);
-        state.captchaSolveCount = 0;
-        state.captchaThreshold = randomCaptchaThreshold();
-        setTimeout(() => {
-          log(`暫停結束，重啟自動狩獵${wasForgeRunning ? "與自動鍛造" : ""}`, accountId);
-          startRunner(accountId);
-          if (wasForgeRunning) setForgeEnabled(accountId, true);
-        }, pauseMs);
-        return "paused";
+      try { result = await callNonecap(); } catch (err) { log(`NoneCap 呼叫失敗：${err.message || String(err)}`, accountId); return false; }
+      if (!result) return false;
+      if (result.status === "quota_exceeded") {
+        log(`NoneCap API Key 配額耗盡（最後使用 ${fmtTime(Date.now())}），自動停用...`, accountId);
+        disableKeyQuota("nonecap"); continue;
       }
+      if (result.status !== "solved" || !result.token) { log(`NoneCap 解題失敗：${result.error || JSON.stringify(result)}`, accountId); return false; }
+      log(`NoneCap 解題成功（${result.resolve_ms ?? "?"}ms）`, accountId);
     }
-    return true;
-  } catch (err) {
-    log(`hCaptcha 解題流程失敗：${err.message || String(err)}`, accountId);
-    return false;
+    try {
+      const waitMs = 2000 + secureRandomInt(3001);
+      log(`等待 ${(waitMs / 1000).toFixed(1)}s 後提交驗證...`, accountId);
+      await new Promise((r) => setTimeout(r, waitMs));
+      const verifyResult = await request("/captcha/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId, token: result.token }) }, accountId);
+      if (verifyResult?.ok !== true) return false;
+      const monthTotal = s.type === "local" ? incrementGeminiUsage() : incrementNonecapUsage();
+      const state = runtimeFor(accountId);
+      if (config(accountId).humanLike) {
+        state.captchaSolveCount = (state.captchaSolveCount || 0) + 1;
+        log(`hCaptcha 已解題 ${state.captchaSolveCount}/${state.captchaThreshold} 次（本月累計 ${monthTotal} 次）`, accountId);
+        if (state.captchaSolveCount >= state.captchaThreshold) {
+          const pauseMs = (10 + secureRandomInt(21)) * 60000;
+          const pauseMin = Math.round(pauseMs / 60000);
+          const wasForgeRunning = state.forgeRunning;
+          stopRunner(accountId, `hCaptcha 解題次數達上限，暫停 ${pauseMin} 分鐘`);
+          stopForgeRunner(accountId, `hCaptcha 解題次數達上限`);
+          log(`hCaptcha 驗證次數達上限（${state.captchaThreshold} 次），暫停 ${pauseMin} 分鐘後自動重啟`, accountId);
+          state.captchaSolveCount = 0;
+          state.captchaThreshold = randomCaptchaThreshold();
+          setTimeout(() => {
+            log(`暫停結束，重啟自動狩獵${wasForgeRunning ? "與自動鍛造" : ""}`, accountId);
+            startRunner(accountId);
+            if (wasForgeRunning) setForgeEnabled(accountId, true);
+          }, pauseMs);
+          return "paused";
+        }
+      }
+      return true;
+    } catch (err) {
+      log(`hCaptcha 解題流程失敗：${err.message || String(err)}`, accountId);
+      return false;
+    }
   }
+  log("所有啟用的 API Key 皆已配額耗盡，無法解題", accountId);
+  return false;
 }
 async function forgeTurn(accountId) {
   const state = runtimeFor(accountId);
@@ -2750,8 +2867,9 @@ function initAccountEvents() {
   if (nonecapInput) nonecapInput.addEventListener("change", () => { localStorage.setItem(nonecapApiKeyStore, nonecapInput.value.trim()); });
   const geminiInput = $("gemini-api-key");
   if (geminiInput) geminiInput.addEventListener("change", () => { localStorage.setItem(geminiApiKeyStore, geminiInput.value.trim()); });
-  $("nonecap-enable-btn")?.addEventListener("click", () => { localStorage.setItem(nonecapSolverStore, "nonecap"); updateSolverVisibility(); });
-  $("gemini-enable-btn")?.addEventListener("click", () => { localStorage.setItem(nonecapSolverStore, "local"); updateSolverVisibility(); });
+  $("solver-type-select")?.addEventListener("change", (e) => { localStorage.setItem(nonecapSolverStore, e.target.value); updateSolverVisibility(); });
+  $("nonecap-reenable-btn")?.addEventListener("click", () => { localStorage.removeItem(nonecapDisabledAtStore); updateNonecapStatus(); });
+  $("gemini-add-key-btn")?.addEventListener("click", () => addGeminiKey());
   $("nonecap-show-key")?.addEventListener("click", () => { const i = $("nonecap-api-key"); if (!i) return; i.type = i.type === "password" ? "text" : "password"; $("nonecap-show-key").textContent = i.type === "password" ? "顯示" : "隱藏"; });
   $("gemini-show-key")?.addEventListener("click", () => { const i = $("gemini-api-key"); if (!i) return; i.type = i.type === "password" ? "text" : "password"; $("gemini-show-key").textContent = i.type === "password" ? "顯示" : "隱藏"; });
   const execTimeoutInput = $("local-execution-timeout");
@@ -2782,6 +2900,20 @@ function init() {
   if (respTimeoutInput) respTimeoutInput.value = localStorage.getItem(localResponseTimeoutStore) || "60";
   const solveRetryInput = $("captcha-solve-retry");
   if (solveRetryInput) solveRetryInput.value = localStorage.getItem(captchaSolveRetryStore) || "0";
+  if (localStorage.getItem(nonecapEnabledStore) === null && localStorage.getItem(geminiEnabledStore) === null) {
+    const oldSolver = localStorage.getItem(nonecapSolverStore) || "nonecap";
+    localStorage.setItem(nonecapEnabledStore, String(oldSolver === "nonecap"));
+    localStorage.setItem(geminiEnabledStore, String(oldSolver === "local"));
+  }
+  if (localStorage.getItem(geminiKeysStore) === null) {
+    const oldKey = (localStorage.getItem(geminiApiKeyStore) || "").trim();
+    const wasEnabled = localStorage.getItem(geminiEnabledStore) === "true";
+    const keys = oldKey ? [{ id: 1, key: oldKey, enabled: wasEnabled, disabledAt: null }] : [];
+    saveGeminiKeysRaw(keys);
+  }
+  renderGeminiKeyRows();
+  const solverTypeSelect = $("solver-type-select");
+  if (solverTypeSelect) solverTypeSelect.value = getSelectedSolverType();
   updateSolverVisibility();
   renderNonecapUsage();
   renderGeminiUsage();
